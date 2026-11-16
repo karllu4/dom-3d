@@ -540,6 +540,14 @@ def main():
                 high = piece.difference(low)
                 slopes += [{'plane': pl, **poly_json(pp)} for pp in parts(low) if pp.area > 0.005]
                 flats += [poly_json(pp) for pp in parts(high) if pp.area > 0.005]
+            # roof openings (hatch, roof windows) are holes in the roof faces; where such a hole lies over the flat ceiling,
+            # the ceiling is still closed (the opening is far above it), so put the hole's flat part back
+            for f in core:
+                for hole in f.get('holes', []):
+                    H = Polygon(hole).buffer(0).intersection(room)
+                    if H.is_empty: continue
+                    high = H.difference(halfplane_le(f['plane'], (0, 0, ceil + drop)))
+                    flats += [poly_json(pp) for pp in parts(high) if pp.area > 0.005]
             fin.append({'ids': rm['ids'], 'ceil': ceil, 'slopes': slopes, 'flats': flats})
         # drop roof-slot triangles inside overridden rooms (replaced by the zone-edge steps)
         ov_rooms = [Polygon(rm['outer'], rm['holes']) for rm in out['levels'][1]['rooms'] if any(i in overrides or i in flatten or i in chamfer for i in rm['ids'])]

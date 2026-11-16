@@ -55,6 +55,7 @@ export interface StairsJ {
   landing: { rect: Rect; z: number };
   topStep: { rect: Rect; z: number };
   void: { rect: Rect };
+  wallsUnder?: { rect: Rect }[];   // walls below the flight (from the plan, missing in the generated walls)
   railings: [Pt, Pt][];
 }
 

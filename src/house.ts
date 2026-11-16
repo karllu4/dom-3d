@@ -384,10 +384,25 @@ function buildStairs(h: HouseJ, mats: Materials, levels: Record<string, THREE.Gr
     g.add(box(xa, s.y0, Math.max(0, top - 0.6 - i * 0.02), xb, s.y1, top, mats.stairs));
     world.solids.push(solidFromRect([xa, s.y0, xb, s.y1], 0, top, 'stair'));
   }
+  // wall between hall (1/2) and bathroom (1/8) under the flight: the plan has the wall continue below the stair,
+  // the wall generator leaves a hole where the flight crosses its line
+  for (const w of s.wallsUnder ?? []) {
+    const top = Math.min(s.treads, Math.max(1, Math.floor(((w.rect[0] + w.rect[2]) / 2 - s.x0) / s.tread) + 1)) * s.rise;
+    g.add(box(w.rect[0], w.rect[1], 0, w.rect[2], w.rect[3], top, mats.plaster));
+    world.solids.push(solidFromRect(w.rect, 0, top, 'wall'));
+  }
   const a = levels['poddasze'];
   const L = s.landing, T = s.topStep;
-  a.add(box(L.rect[0], L.rect[1], 2.93, L.rect[2], L.rect[3], L.z, mats.concrete));
-  a.add(box(T.rect[0], T.rect[1], 2.93, T.rect[2], T.rect[3], T.z, mats.concrete));
+  // The landing and the top step sit on the slab: their underside starts 1.5 cm above the ceiling plane below (2.93),
+  // so the two surfaces never coincide (no flicker) ...
+  const base = 2.945, lastTop = s.treads * s.rise;
+  a.add(box(L.rect[0], L.rect[1], base, L.rect[2], L.rect[3], L.z, mats.concrete));
+  a.add(box(T.rect[0], T.rect[1], base, T.rect[2], T.rect[3], T.z, mats.concrete));
+  // ... and they are closed down to the last tread, so nothing hangs in the air with a slot under it:
+  // a riser under the landing's front edge, and the same under the top step's side along the flight
+  const runY0 = s.y0, runY1 = s.y1, xEnd = s.x0 + s.treads * s.tread;
+  a.add(box(xEnd - 0.06, runY0, lastTop - 0.01, xEnd, runY1, base + 0.02, mats.concrete));
+  a.add(box(T.rect[0], runY0, lastTop - 0.01, T.rect[2], runY0 + 0.06, base + 0.02, mats.concrete));
   world.solids.push(solidFromRect(L.rect, 2.57, L.z, 'floor'));
   world.solids.push(solidFromRect(T.rect, 2.57, T.z, 'floor'));
   // balustrade around the stair void in the attic
