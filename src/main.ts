@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { TexturePass } from 'three/addons/postprocessing/TexturePass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
@@ -21,16 +25,30 @@ async function main() {
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // AO + MSAA at full retina resolution costs too many frames
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMapping = THREE.AgXToneMapping;      // film-like highlight roll-off (photo look, no clipped whites)
+  renderer.toneMappingExposure = 0.92;
   $('app').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 400);
+
+  // ---------- post-processing ("photo" quality, Q toggles): scene -> ambient occlusion -> AgX + sRGB.
+  // The scene is rendered into its own MSAA target so the AO uses the real depth (incl. roof-clipped attic walls).
+  const quality = { high: true };
+  const sceneRT = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+  sceneRT.depthTexture = new THREE.DepthTexture(innerWidth, innerHeight);
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType }));
+  composer.addPass(new TexturePass(sceneRT.texture));
+  const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight, { depthTexture: sceneRT.depthTexture });
+  gtao.blendIntensity = 1.0;
+  gtao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.6, thickness: 1.2, scale: 1.0, samples: 8, distanceFallOff: 1.0, screenSpaceRadius: false });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, radiusExponent: 1, rings: 2, samples: 8 });
+  composer.addPass(gtao);
+  composer.addPass(new OutputPass());
 
   // Plan orientation: plan up = west (-Z), plan left = south (-X). Afternoon sun from the south-west.
   const site = house.site ?? { lat: 53.19, lon: 18.08, planDownBearingDeg: 90 };
@@ -42,6 +60,12 @@ async function main() {
   su.rayleigh.value = 1.4;
   su.mieCoefficient.value = 0.004;
   su.mieDirectionalG.value = 0.8;
+  // fair-weather cumulus drifting across the sky (the same clouds dim the sun when they pass in front of it)
+  su.cloudCoverage.value = 0.5;
+  su.cloudDensity.value = 0.55;
+  su.cloudScale.value = 0.00022;
+  su.cloudSpeed.value = 0.00000007; // barely perceptible drift: clouds change over minutes (shader time advances 1000 units per second)
+  su.cloudElevation.value = 0.55;
   su.sunPosition.value.copy(sunDir);
   scene.add(sky);
 
@@ -55,8 +79,10 @@ async function main() {
   sc.left = -14; sc.right = 14; sc.top = 14; sc.bottom = -14; sc.near = 5; sc.far = 70;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
-  sun.shadow.radius = 2.5;
+  sun.shadow.radius = 6;            // soft penumbra: sunlight through a hazy, partly cloudy sky
+  sun.shadow.blurSamples = 16;
   scene.add(sun, sun.target);
+  let sunBase = 1.7, cloudLight = 1;
   const sunState = { month: new Date().getMonth() + 1, hour: 13 };
   const applySun = () => {
     const sp = sunPosition(site.lat, site.lon, sunState.month, 15, sunState.hour);
@@ -64,10 +90,14 @@ async function main() {
     su.sunPosition.value.copy(sunDir);
     sun.position.copy(center).addScaledVector(sunDir, 30);
     const up = THREE.MathUtils.clamp(sp.elevation / 12, 0, 1);       // fade in after sunrise
-    sun.intensity = 2.6 * up;
+    sunBase = 1.25 * up;               // softened (hazy Polish sky); clouds modulate it in the frame loop
+    sun.intensity = sunBase * cloudLight;
     const day = THREE.MathUtils.clamp((sp.elevation + 6) / 18, 0, 1);
-    hemi.intensity = 0.08 + 1.17 * day;
-    ambient.intensity = 0.05 + 0.5 * day;
+    hemi.intensity = 0.04 + 0.35 * day;                 // small fill; most of the daylight comes from the sky env map
+    ambient.intensity = 0.02 + 0.08 * day;
+    scene.environmentIntensity = 0.01 + 0.12 * day;
+    if (envTimer) clearTimeout(envTimer);
+    envTimer = setTimeout(() => updateEnv(), envRT ? 120 : 0);   // re-filter the sky once the slider settles
     const lbl = document.getElementById('sun-label');
     if (lbl) lbl.textContent = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sunState.month - 1]} 15, ${String(Math.floor(sunState.hour)).padStart(2, '0')}:${String(Math.round((sunState.hour % 1) * 60)).padStart(2, '0')} · sun ${sp.elevation.toFixed(0)}° high, from ${compass(sp.azimuth)}`;
   };
@@ -76,6 +106,20 @@ async function main() {
   const hemi = new THREE.HemisphereLight(0xf2f5ff, 0xd9cfbf, 1.25);
   const ambient = new THREE.AmbientLight(0xfff8f0, 0.55);
   scene.add(hemi, ambient);
+  // image-based light: the same sky (without the sun disc) pre-filtered into an environment map, so every surface
+  // gets sky-coloured fill and soft reflections instead of a flat ambient term
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  const envSky = new Sky(); envSky.scale.setScalar(1000); envScene.add(envSky);
+  let envRT: THREE.WebGLRenderTarget | null = null, envTimer: ReturnType<typeof setTimeout> | null = null;
+  const updateEnv = () => {
+    const eu = envSky.material.uniforms;
+    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG', 'cloudCoverage', 'cloudDensity', 'cloudScale', 'cloudSpeed', 'cloudElevation', 'time']) eu[k].value = su[k].value;
+    eu.sunPosition.value.copy(sunDir); eu.showSunDisc.value = 0;
+    envRT?.dispose();
+    envRT = pmrem.fromScene(envScene, 0, 0.1, 2000);
+    scene.environment = envRT.texture;
+  };
   applySun();
   (document.getElementById('sun-month') as HTMLInputElement).value = String(sunState.month);
   (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour);
@@ -241,6 +285,10 @@ async function main() {
     if (a) { actions[a](); syncToggles(); }
     if (e.code === 'KeyM') $('minimap').classList.toggle('hidden');
     if (e.code === 'KeyL' && !e.repeat) pressL();
+    if (e.code === 'KeyQ' && !e.repeat) {
+      quality.high = !quality.high;
+      const t = $('toast'); if (t) { t.textContent = quality.high ? 'Quality: photo (ambient occlusion, AgX)' : 'Quality: fast'; t.classList.remove('hidden'); clearTimeout((t as any)._h); (t as any)._h = setTimeout(() => t.classList.add('hidden'), 2000); }
+    }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
     if (tape.active && (e.code === 'KeyZ' || e.code === 'Backspace')) tape.undo();
@@ -267,12 +315,14 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape } });
+  Object.assign(window, { dom3d: { player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    sceneRT.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
   });
 
   const nearestDoor = () => {
@@ -285,6 +335,7 @@ async function main() {
   };
 
   // ---------- loop
+  let envClock = 0;
   const timer = new THREE.Timer();
   timer.connect(document);
   let lastRoom = '';
@@ -292,6 +343,15 @@ async function main() {
   renderer.setAnimationLoop(() => {
     timer.update();
     const dt = timer.getDelta();
+    // clouds: drift the sky, and dim the sun smoothly when a cloud passes (two slow incommensurate waves ~ 1.5-4 min)
+    su.time.value += dt * 1000;
+    const tt = su.time.value / 1000;
+    const cover = 0.5 + 0.32 * Math.sin(tt * 0.028) + 0.18 * Math.sin(tt * 0.065 + 1.7);   // 0..1, >0.6 = sun behind a cloud (every few minutes)
+    const target = 1 - 0.62 * THREE.MathUtils.smoothstep(cover, 0.55, 0.8);
+    cloudLight += (target - cloudLight) * Math.min(1, dt * 0.4);
+    sun.intensity = sunBase * cloudLight;
+    envClock += dt;
+    if (envClock > 12) { envClock = 0; updateEnv(); }                                        // refresh the sky reflections now and then
     for (const d of hs.doors) d.update(dt);
     if (overview) {
       orbit.update();
@@ -313,7 +373,12 @@ async function main() {
       $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}`;
     }
     tape.update(innerWidth, innerHeight, snap);
-    renderer.render(scene, camera);
+    if (quality.high) {
+      renderer.setRenderTarget(sceneRT);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+      composer.render(dt);
+    } else renderer.render(scene, camera);
   });
 }
 

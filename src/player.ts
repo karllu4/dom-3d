@@ -5,7 +5,7 @@ import type { World } from './physics';
 const RADIUS = 0.22;
 const EYE = 1.72, HEIGHT = 1.85; // eye level 172 cm (owner), body ~185 cm
 const EYE_CROUCH = 1.0, HEIGHT_CROUCH = 1.15;
-const WALK = 1.6, RUN = 3.4;
+const WALK = 2.6, RUN = 5.5;   // m/s: brisk walk, Shift = run
 const GRAVITY = 9.81;
 
 export class Player {

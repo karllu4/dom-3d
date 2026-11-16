@@ -1,0 +1,56 @@
+{
+  "screed": {
+    "asset": "concrete_floor_worn_001",
+    "size": 3.0,
+    "source": "https://polyhaven.com/a/concrete_floor_worn_001",
+    "license": "CC0"
+  },
+  "plaster": {
+    "asset": "grey_plaster",
+    "size": 1.0,
+    "source": "https://polyhaven.com/a/grey_plaster",
+    "license": "CC0"
+  },
+  "oak": {
+    "asset": "oak_veneer_01",
+    "size": 1.83,
+    "source": "https://polyhaven.com/a/oak_veneer_01",
+    "license": "CC0"
+  },
+  "wool": {
+    "asset": "poly_wool_herringbone",
+    "size": 0.5,
+    "source": "https://polyhaven.com/a/poly_wool_herringbone",
+    "license": "CC0"
+  },
+  "linen": {
+    "asset": "rough_linen",
+    "size": 0.5,
+    "source": "https://polyhaven.com/a/rough_linen",
+    "license": "CC0"
+  },
+  "jute": {
+    "asset": "hessian_230",
+    "size": 0.5,
+    "source": "https://polyhaven.com/a/hessian_230",
+    "license": "CC0"
+  },
+  "grass": {
+    "asset": "leafy_grass",
+    "size": 2.0,
+    "source": "https://polyhaven.com/a/leafy_grass",
+    "license": "CC0"
+  },
+  "pine": {
+    "asset": "coated_pine",
+    "size": 0.74,
+    "source": "https://polyhaven.com/a/coated_pine",
+    "license": "CC0"
+  },
+  "paving": {
+    "asset": "concrete_pavement",
+    "size": 1.8,
+    "source": "https://polyhaven.com/a/concrete_pavement",
+    "license": "CC0"
+  }
+}

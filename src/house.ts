@@ -107,7 +107,8 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
 
     // plan overlay (toggle with P)
     const [x0, y0, x1, y1] = lv.overlay.rect;
-    const tex = new THREE.TextureLoader().load(lv.overlay.img);
+    // the architect's plan images are not part of the public copy: when missing, the overlay stays empty
+    const tex = new THREE.TextureLoader().load(lv.overlay.img, undefined, undefined, () => { ov.userData.missing = true; ov.material.visible = false; });
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
     const ov = new THREE.Mesh(
@@ -259,13 +260,13 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         geo.computeVertexNormals();
         grp.add(mesh(geo, mat, false));
       };
-      // same build-up as the slopes: 15 cm wool against the wall, double plasterboard in front of it
+      // the step is a framed triangle: its wool sits inside the frame (flush with the wall), the double plasterboard
+      // is fixed straight onto it, so the lining stays flat instead of forming a 15 cm box below the lower slope
+      const tb = af.board + 0.005;
       panel(0.005, mats.wool, wool);
-      panel(af.woolUnder, mats.wool, wool);
-      edge(0.005, af.woolUnder, wool);
-      panel(af.woolUnder + af.board, mats.plasterboard, board);
-      edge(0.005, af.woolUnder + af.board, board, mats.plasterboard); // closes the joint with the slope lining
-      panel(0.003, mats.plasterboard, board); // white backing on the wall: anything seen through a seam is board, not timber
+      panel(tb, mats.plasterboard, board);
+      edge(0.005, tb, board, mats.plasterboard);   // closes the joint with the slope lining
+      panel(0.003, mats.plasterboard, board);      // white backing on the wall: anything seen through a seam is board, not timber
     }
     // seams along valleys/hips between two lined slopes: a narrow plasterboard strip just behind the joint
     const fpAttic = h.levels[1].footprint;

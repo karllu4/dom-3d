@@ -10,7 +10,7 @@ npm install
 npm run dev          # http://localhost:5173  (open it in the Windows browser)
 ```
 
-Controls: click to walk in · `WASD` walk · `Shift` run · `C` crouch · mouse look ·
+Controls: click to walk in · `WASD` walk (2.6 m/s) · `Shift` run (5.5 m/s) · `Q` render quality (photo: ambient occlusion + sky lighting + AgX tone mapping / fast) · `C` crouch · mouse look ·
 `P` plan overlay on the floor · `R` roof · `U` attic · `L` light in your room, `L L` (double) all lights on your floor (lighting design per room in `lighting` in the config: opal ceiling lamps in rooms, 3 dining pendants, LED downlights only in hall/corridors/bathrooms, kitchen beam strip, bathroom mirror strip, garage/utility battens) · `O` overview (orbit) · `M` minimap · `T` tape measure (click two points at the crosshair, distance in cm; `N` vertex snap, `Z` undo, `X` clear) · `Esc` menu (teleport to any room).
 
 ## How the model is made
@@ -28,6 +28,13 @@ Edit `data/house-config.json` and re-run `npm run data` to correct anything (win
 spawn point, roof thickness). Requires the Python venv: `python3 -m venv .venv && .venv/bin/pip install pymupdf shapely pillow`.
 
 Orientation (fitted on the geoportal orthophoto, `site` in the config): the entrance/garage side (plan down) faces **115° (ESE)**, plan right faces 25° (NNE). Sun is computed for 53.19°N 18.08°E; set month and time in the menu. The minimap has a north arrow.
+
+## Rendering
+
+- Photo-scanned PBR materials (colour + normal + roughness) from Poly Haven (CC0), fetched and colour-graded by
+  `tools/fetch_textures.py` into `public/textures/` (screed floor, white plaster, raw pine boarding, oak veneer, wool, linen, jute, grass, paving).
+- Sky lighting: the sky (with drifting clouds) is pre-filtered into an environment map; passing clouds dim the sun.
+- Ambient occlusion (GTAO) on the real depth buffer, AgX tone mapping; furniture has rounded edges.
 
 ## Current-state assumptions (stage 1)
 

@@ -3,6 +3,8 @@ import type { HouseJ } from './types';
 import type { World } from './physics';
 import { solidFromRect } from './physics';
 import { makeRoofHeight } from './roof';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { pbr } from './materials';
 
 /**
  * Interior design v1: simple, clean furniture models built from boxes/cylinders (toggle with F).
@@ -14,14 +16,23 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
   let g = groups.parter;      // current item group (positioned at the floor height of its level)
   let z0 = 0;
   const M = (color: number, rough = 0.6, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
-  const oak = M(0xc49a6c, 0.55), white = M(0xf2efe8, 0.45), anth = M(0x2f3236, 0.5, 0.2), worktop = M(0x3a3a3c, 0.35);
-  const fabric = M(0x8e8a84, 0.95), fabricDark = M(0x6d6a66, 0.95), steel = M(0xb9bcc0, 0.3, 0.8), glassBlack = M(0x111214, 0.15, 0.3);
-  const rugMat = M(0xd9d2c4, 1);
-  const plasterboard = M(0xeceae5, 0.9);
+  const oak = pbr('oak', 1.83, { roughness: 0.7 }), white = M(0xf2efe8, 0.45), anth = M(0x2f3236, 0.5, 0.2), worktop = M(0x3a3a3c, 0.35);
+  const fabric = pbr('wool', 0.45, { color: 0xa39e96 }, 0.8), fabricDark = pbr('wool', 0.45, { color: 0x7d7973 }, 0.8), steel = M(0xb9bcc0, 0.3, 0.8), glassBlack = M(0x111214, 0.15, 0.3);
+  const rugMat = pbr('jute', 0.4, { color: 0xf4efe6 }, 1.2);
+  const plasterboard = pbr('plaster', 1.2, { color: 0xfbfaf6, roughness: 0.92 }, 0.12);
   const roofH = makeRoofHeight(h.roof, true);              // underside of the rafters (bay roofs only over their walls)
 
+  // soft upholstery gets generously rounded edges, everything else a small arris (real furniture never has knife edges)
+  const soft = new Set<THREE.Material>();
+  const geom = (w: number, hh: number, d: number, m: THREE.Material) => {
+    const mn = Math.min(w, hh, d);
+    const r = Math.min(soft.has(m) ? 0.035 : 0.006, mn * 0.3);
+    const geo = mn < 0.02 ? new THREE.BoxGeometry(w, hh, d) : new RoundedBoxGeometry(w, hh, d, soft.has(m) ? 3 : 2, r);
+    if (!m.userData.uv01) metricUV(geo);             // fluted fronts keep 0..1 UVs (their pattern is sized per front)
+    return geo;
+  };
   const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material) => {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1 - x0), Math.abs(z1 - z0), Math.abs(y1 - y0)), m);
+    const b = new THREE.Mesh(geom(Math.abs(x1 - x0), Math.abs(z1 - z0), Math.abs(y1 - y0), m), m);
     b.position.set((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2);
     b.castShadow = true; b.receiveShadow = true;
     g.add(b);
@@ -34,7 +45,7 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
     s.rotation.y = THREE.MathUtils.degToRad(rot);
     g.add(s);
     const b = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1 - x0), Math.abs(z1 - z0), Math.abs(y1 - y0)), m);
+      const mesh = new THREE.Mesh(geom(Math.abs(x1 - x0), Math.abs(z1 - z0), Math.abs(y1 - y0), m), m);
       mesh.position.set((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2);
       mesh.castShadow = true; mesh.receiveShadow = true;
       s.add(mesh);
@@ -44,7 +55,8 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
   };
   const block = (r: [number, number, number, number], z1: number) => world.solids.push(solidFromRect(r, z0 - 0.05, z0 + z1, 'furniture'));
   const white2 = M(0xfbfbf9, 0.25), chrome = M(0xd8dadc, 0.2, 0.9), glassClear = new THREE.MeshStandardMaterial({ color: 0xcfe3ea, roughness: 0.05, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
-  const linen = M(0xe9e4da, 0.95), duvet = M(0xd8d0c2, 0.9), rubber = M(0x2b2b2b, 0.95), wood2 = M(0xa77b52, 0.6);
+  const linen = pbr('linen', 0.4, { color: 0xf3efe7 }, 0.8), duvet = pbr('linen', 0.4, { color: 0xe3d9c9 }, 0.8), rubber = M(0x2b2b2b, 0.95), wood2 = pbr('oak', 1.83, { color: 0xc9a27c, roughness: 0.7 });
+  for (const m of [fabric, fabricDark, linen, duvet]) soft.add(m);
   const cyl = (x: number, y: number, za: number, zb: number, r: number, m: THREE.Material, seg = 20) => {
     const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, zb - za, seg), m); c.position.set(x, (za + zb) / 2, y); c.castShadow = true; g.add(c); return c;
   };
@@ -60,7 +72,9 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
     const bump = new THREE.CanvasTexture(fluteCanvas);
     bump.wrapS = THREE.RepeatWrapping; bump.repeat.set(Math.max(1, Math.round(w / 0.02)), 1);
     const shade = bump.clone(); shade.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.MeshStandardMaterial({ color: 0xd2a676, map: shade, bumpMap: bump, bumpScale: 3, roughness: 0.6 });
+    const fm = new THREE.MeshStandardMaterial({ color: 0xd2a676, map: shade, bumpMap: bump, bumpScale: 3, roughness: 0.6 });
+    fm.userData.uv01 = true;
+    return fm;
   };
 
   for (const f of h.furniture ?? []) {
@@ -300,24 +314,64 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         block(r!, H);
         break;
       }
-      case 'partition': {             // plasterboard stud wall; top follows the underside of the roof (capped at f.h above the floor)
-        const [x0, y0, x1, y1] = r!; const cap = f.h ?? 2.8;
+      case 'partition': {             // plasterboard stud wall up to the finished (lined) ceiling: flat top, or the slope lining
+        const [x0, y0, x1, y1] = r!; const cap = f.h ?? (h.atticFinish?.ceilingHeight ?? 2.8);
+        const af = h.atticFinish;
+        const drop = af ? (af.woolUnder + af.board) * Math.sqrt(1 + h.roof.k * h.roof.k) : 0;   // rafters -> board face
         const alongX = x1 - x0 >= y1 - y0, len = alongX ? x1 - x0 : y1 - y0;
-        const n = Math.max(1, Math.ceil(len / 0.1));
-        const topAt = (x: number, y: number) => { const z = roofH(x, y) - z0; return Number.isFinite(z) ? Math.min(cap, z) : cap; };
-        let lowest = cap;
-        for (let i = 0; i < n; i++) {                                  // short segments so the top can follow roof breaks
-          const a = (alongX ? x0 : y0) + (len * i) / n, b = (alongX ? x0 : y0) + (len * (i + 1)) / n;
-          const [sx0, sy0, sx1, sy1] = alongX ? [a, y0, b, y1] : [x0, a, x1, b];
-          const seg = box(sx0, sy0, 0, sx1, sy1, 1, plasterboard);
-          const pos = seg.geometry.attributes.position as THREE.BufferAttribute;
-          for (let k = 0; k < pos.count; k++) {                        // box local coords: centred; move the vertices to world-sized heights
-            const wx = seg.position.x + pos.getX(k), wy = seg.position.z + pos.getZ(k);
-            const top = topAt(wx, wy); lowest = Math.min(lowest, top);
-            pos.setY(k, (pos.getY(k) > 0 ? top : 0) - seg.position.y);
-          }
-          pos.needsUpdate = true; seg.geometry.computeVertexNormals(); seg.geometry.computeBoundingSphere();
+        const [d0, d1] = alongX ? [y0, y1] : [x0, x1];
+        const at = (a: number, d: number) => (alongX ? [x0 + a, d] : [d, y0 + a]) as [number, number];
+        const baseTop = (a: number, d: number) => { const [x, y] = at(a, d); const z = roofH(x, y) - drop - z0; return Number.isFinite(z) ? Math.min(cap, z) : cap; };
+        // roof steps (vertical lined triangles where a higher bay roof starts) crossing the wall: the ceiling jumps there
+        // exactly at the face of the step's plasterboard (step line + board thickness, on the high side), so the wall top
+        // jumps at the same place and the boards meet without a slit
+        const tb = (af?.board ?? 0.025) + 0.005;
+        const jumps: { s: number; e: number; lowA: number }[] = [];
+        for (const st of af?.steps ?? []) {
+          const [sx0, sy0, sx1, sy1] = st.p;
+          const crossAlong = alongX ? Math.abs(sx1 - sx0) < 1e-6 : Math.abs(sy1 - sy0) < 1e-6;   // step perpendicular to the wall
+          if (!crossAlong) continue;
+          const sa = (alongX ? sx0 : sy0) - (alongX ? x0 : y0);
+          const lo = Math.min(alongX ? sy0 : sx0, alongX ? sy1 : sx1), hi = Math.max(alongX ? sy0 : sx0, alongX ? sy1 : sx1);
+          if (sa <= 0 || sa >= len || hi < Math.min(d0, d1) || lo > Math.max(d0, d1)) continue;
+          const up = baseTop(sa + 0.3, d1) > baseTop(sa - 0.3, d1) ? 1 : -1;                     // direction of the high side
+          jumps.push({ s: sa, e: sa + up * tb, lowA: sa - up * 0.01 });
         }
+        const topAt = (a: number, d: number) => {
+          for (const j of jumps) if (a >= Math.min(j.s, j.e) - 1e-6 && a <= Math.max(j.s, j.e) + 1e-6) return baseTop(j.lowA, d);
+          return baseTop(a, d);
+        };
+        const samples = new Set<number>();
+        for (let i = 0; i <= Math.ceil(len / 0.05); i++) samples.add(Math.min(len, i * 0.05));
+        for (const j of jumps) { samples.add(j.s); samples.add(j.e); samples.add(j.e + (j.e > j.s ? 1e-4 : -1e-4)); }
+        const as = [...samples].filter((a) => a >= 0 && a <= len).sort((p, q) => p - q);
+        const n = as.length - 1;
+        const v: number[] = [], uv: number[] = [];
+        const P = (a: number, d: number, z: number) => { const [x, y] = at(a, d); return [x, z, y]; };
+        const quad = (A: number[], B: number[], C: number[], D: number[], ua: number[], ub: number[], uc: number[], ud: number[]) => {
+          v.push(...A, ...B, ...C, ...A, ...C, ...D); uv.push(...ua, ...ub, ...uc, ...ua, ...uc, ...ud);
+        };
+        let lowest = cap;
+        for (let i = 0; i < n; i++) {
+          const a = as[i], b = as[i + 1];
+          if (b - a < 1e-9) continue;
+          for (const d of [d0, d1]) {                                  // both faces, top edge on the ceiling lining
+            const ta = topAt(a, d), tb = topAt(b, d); lowest = Math.min(lowest, ta, tb);
+            const face = [P(a, d, 0), P(b, d, 0), P(b, d, tb), P(a, d, ta)];
+            const fu = [[a, 0], [b, 0], [b, tb], [a, ta]];
+            if (d === d0) quad(face[0], face[1], face[2], face[3], fu[0], fu[1], fu[2], fu[3]);
+            else quad(face[1], face[0], face[3], face[2], fu[1], fu[0], fu[3], fu[2]);
+          }
+          quad(P(a, d0, topAt(a, d0)), P(b, d0, topAt(b, d0)), P(b, d1, topAt(b, d1)), P(a, d1, topAt(a, d1)), [a, 0], [b, 0], [b, d1 - d0], [a, d1 - d0]);
+        }
+        for (const a of [0, len]) quad(P(a, d0, 0), P(a, d1, 0), P(a, d1, topAt(a, d1)), P(a, d0, topAt(a, d0)), [0, 0], [d1 - d0, 0], [d1 - d0, 1], [0, 1]);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        geo.computeVertexNormals();
+        const wall = new THREE.Mesh(geo, plasterboard); wall.castShadow = wall.receiveShadow = true;
+        wall.material.side = THREE.DoubleSide;
+        g.add(wall);
         block(r!, lowest);
         break;
       }
@@ -491,4 +545,16 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
     }
   }
   return groups;
+}
+
+/** Box-projected UVs in metres (texture repeat = 1 / tile size), so photo textures keep their real scale on any box. */
+function metricUV(geo: THREE.BufferGeometry) {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  const uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i));
+    const [u, v] = ax >= ay && ax >= az ? [p.getZ(i), p.getY(i)] : ay >= az ? [p.getX(i), p.getZ(i)] : [p.getX(i), p.getY(i)];
+    uv[i * 2] = u; uv[i * 2 + 1] = v;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }

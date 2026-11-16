@@ -42,21 +42,32 @@ function noise(g: CanvasRenderingContext2D, px: number, base: [number, number, n
   }
 }
 
-export function makeMaterials() {
-  const concrete = canvasTex(512, 2.0, (g, px) => {
-    noise(g, px, [150, 148, 143], 26, 7, 160);
-    // trowel marks
-    const r = rng(3);
-    g.strokeStyle = 'rgba(255,255,255,0.035)';
-    for (let i = 0; i < 90; i++) {
-      g.lineWidth = 2 + r() * 6;
-      g.beginPath();
-      const x = r() * px, y = r() * px;
-      g.arc(x, y, 30 + r() * 80, r() * 6, r() * 6 + 1.2);
-      g.stroke();
+const loader = new THREE.TextureLoader();
+const texCache = new Map<string, THREE.Texture>();
+/** Photo-scanned PBR set from public/textures (tools/fetch_textures.py). `size` = metres covered by one tile. */
+export function pbr(name: string, size: number | [number, number], extra: THREE.MeshStandardMaterialParameters = {}, normal = 1): THREE.MeshStandardMaterial {
+  const [su, sv] = Array.isArray(size) ? size : [size, size];
+  const load = (kind: string, srgb: boolean) => {
+    const key = `${name}_${kind}`;
+    let base = texCache.get(key);
+    if (!base) {
+      base = loader.load(`textures/${key}.jpg`);
+      base.wrapS = base.wrapT = THREE.RepeatWrapping;
+      base.anisotropy = 8;
+      if (srgb) base.colorSpace = THREE.SRGBColorSpace;
+      texCache.set(key, base);
     }
+    const t = base.clone();          // shares the image; own repeat per material
+    t.repeat.set(1 / su, 1 / sv);
+    return t;
+  };
+  return new THREE.MeshStandardMaterial({
+    map: load('diff', true), normalMap: load('nor', false), roughnessMap: load('rough', false),
+    normalScale: new THREE.Vector2(normal, normal), roughness: 1, ...extra,
   });
-  const plaster = canvasTex(256, 1.5, (g, px) => noise(g, px, [236, 234, 229], 8, 11, 40));
+}
+
+export function makeMaterials() {
   // current state outside: raw aerated-concrete blocks 59 x 24 cm (texture = 2 blocks x 2 courses)
   const facade = canvasTex(512, [1.2, 0.48], (g, px) => {
     noise(g, px, [226, 227, 224], 10, 13, 20);
@@ -72,40 +83,6 @@ export function makeMaterials() {
       g.fillStyle = `rgba(150,150,145,${0.08 + r() * 0.12})`;
       g.beginPath(); g.arc(r() * px, r() * px, 2 + r() * 10, 0, 7); g.fill();
     }
-  });
-  const grass = canvasTex(256, 3, (g, px) => noise(g, px, [92, 124, 64], 38, 17, 120));
-  const paving = canvasTex(256, 1.2, (g, px) => {
-    noise(g, px, [168, 166, 160], 14, 19);
-    g.strokeStyle = 'rgba(60,60,60,0.5)';
-    g.lineWidth = 2;
-    for (let i = 0; i <= 4; i++) {
-      g.beginPath(); g.moveTo(0, (i * px) / 4); g.lineTo(px, (i * px) / 4); g.stroke();
-      g.beginPath(); g.moveTo((i * px) / 2, 0); g.lineTo((i * px) / 2, px); g.stroke();
-    }
-  });
-  // Underside of the roof as it is now: breathable membrane between rafters 8x16 every ~90 cm.
-  // underside of the roof as built: full pine boarding (deskowanie) nailed across the rafters.
-  // Boards ~15 cm wide run parallel to the eave (v = up the slope), texture = 1.2 m x 0.6 m (4 boards).
-  const rafters = canvasTex(512, [1.2, 0.6], (g, px) => {
-    const r = rng(23);
-    const bh = px / 4;
-    for (let b = 0; b < 4; b++) {
-      const base = 170 + r() * 30;
-      g.fillStyle = `rgb(${base + 10},${base - 8},${base - 45})`;
-      g.fillRect(0, b * bh, px, bh);
-      g.strokeStyle = 'rgba(110,80,40,0.25)';
-      for (let i = 0; i < 14; i++) { const y = b * bh + r() * bh; g.lineWidth = 1 + r(); g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(px * 0.3, y + (r() - 0.5) * 8, px * 0.7, y + (r() - 0.5) * 8, px, y); g.stroke(); }
-      g.fillStyle = 'rgba(40,28,14,0.6)';
-      g.fillRect(0, b * bh, px, 3);                                    // gap between boards
-      const joint = r() * px;                                          // board end joint
-      g.fillRect(joint, b * bh, 3, bh);
-    }
-  });
-  const timber = canvasTex(256, [0.5, 2.0], (g, px) => {
-    noise(g, px, [196, 168, 122], 18, 37);
-    const r = rng(43);
-    g.strokeStyle = 'rgba(90,60,30,0.28)';
-    for (let i = 0; i < 70; i++) { const x = r() * px; g.lineWidth = 1 + r() * 2; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + (r() - 0.5) * 6, px); g.stroke(); }
   });
   // Braas Turmalin, anthracite, matt engobe: flat ceramic tile laid in straight columns.
   // Texture = 2 tiles across (~0.30 m cover width each) x 2 rows (~0.33 m gauge). v runs up the slope.
@@ -185,18 +162,18 @@ export function makeMaterials() {
 
   const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(p);
   return {
-    concrete: std({ map: concrete, roughness: 0.95 }),
-    slabConcrete: std({ map: concrete, color: 0xffffff, emissive: 0x3a3a38, roughness: 0.95, side: THREE.DoubleSide }), // bare concrete slab soffit (terrace)
-    plaster: std({ map: plaster, roughness: 0.9 }),
-    ceiling: std({ map: plaster, roughness: 0.9, side: THREE.DoubleSide }),
+    concrete: pbr('screed', 3.0, { roughness: 0.95 }),            // raw concrete screed (photo scan)
+    slabConcrete: pbr('screed', 3.0, { emissive: 0x2a2a28, roughness: 0.95, side: THREE.DoubleSide }), // bare concrete slab soffit (terrace)
+    plaster: pbr('plaster', 1.0, { roughness: 0.95 }, 0.35),      // white interior plaster: scanned relief, re-graded white
+    ceiling: pbr('plaster', 1.0, { roughness: 0.95, side: THREE.DoubleSide }, 0.3),
     facade: ringBeamBand(std({ map: facade, roughness: 0.95 })),
-    wallTop: std({ map: plaster, roughness: 0.9 }), // caps: door/window soffits and wall tops
-    grass: std({ map: grass, roughness: 1 }),
-    paving: std({ map: paving, roughness: 0.9 }),
-    rafters: std({ map: rafters, roughness: 0.9, side: THREE.DoubleSide }), // roof boarding between the rafters
-    timber: std({ map: timber, roughness: 0.8 }),
+    wallTop: pbr('plaster', 1.0, { roughness: 0.95 }, 0.35), // caps: door/window soffits and wall tops
+    grass: pbr('grass', 2.0, { roughness: 1 }),
+    paving: pbr('paving', 1.8, { roughness: 0.9 }),
+    rafters: pbr('pine', 0.74, { roughness: 0.85, side: THREE.DoubleSide }), // pine roof boarding between the rafters (photo scan)
+    timber: pbr('pine', [0.74, 0.74], { roughness: 0.8 }),
     wool: std({ map: wool, roughness: 1, side: THREE.DoubleSide }),
-    plasterboard: std({ color: 0xf4f3ef, roughness: 0.9, side: THREE.DoubleSide }),
+    plasterboard: pbr('plaster', 1.2, { roughness: 0.92, color: 0xfbfaf6, side: THREE.DoubleSide }, 0.12),
     tiles: std({ map: tiles, roughness: 0.82, side: THREE.DoubleSide }), // matt engobe
     fascia: std({ color: 0x33363a, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide }), // anthracite roof flashing (verge / eaves)
     frameCaramel: std({ map: winchester, roughness: 0.5 }), // Winchester XA 49240 wood decor (all WIKĘD windows and HS doors)
@@ -209,7 +186,7 @@ export function makeMaterials() {
     glass: new THREE.MeshStandardMaterial({ color: 0xa8cde0, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }),
     sillBoard: std({ color: 0xf2f0ea, roughness: 0.4 }),
     railing: std({ color: 0x2a2a2c, roughness: 0.4, metalness: 0.6 }),
-    stairs: std({ map: concrete, roughness: 0.95 }),
+    stairs: pbr('screed', 3.0, { roughness: 0.92 }),
   };
 }
 export type Materials = ReturnType<typeof makeMaterials>;
