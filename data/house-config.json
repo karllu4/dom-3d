@@ -137,8 +137,8 @@
     { "name": "wejście", "rect": [4.0, 9.597, 7.0, 11.0], "z": -0.02 }
   ] },
 
-  "_atticFinish": "Owner's planned attic ceiling (toggle I): flat plasterboard ceiling 2.80 above each room floor; on the slopes below it: 5 cm vent gap under the boarding, 15 cm wool between rafters, 15 cm wool under rafters, double plasterboard 2x12.5 mm; on the flat part 30 cm wool lies on the plasterboard.",
-  "atticFinish": { "ceilingHeight": 2.80, "woolBetween": 0.15, "woolUnder": 0.15, "board": 0.025, "woolFlat": 0.30 },
+  "_atticFinish": "flattenBays: rooms where the bay under a gable roof is filled in, so the main slope lining runs on unbroken to the walls (simpler to build, loses a little space). Owner's planned attic ceiling (toggle I): flat plasterboard ceiling 2.80 above each room floor; on the slopes below it: 5 cm vent gap under the boarding, 15 cm wool between rafters, 15 cm wool under rafters, double plasterboard 2x12.5 mm; on the flat part 30 cm wool lies on the plasterboard.",
+  "atticFinish": { "flattenBays": ["2/4"], "chamferSteps": {"2/5": 0.6}, "ceilingHeight": 2.80, "woolBetween": 0.15, "woolUnder": 0.15, "board": 0.025, "woolFlat": 0.30 },
 
   "_lighting": "Lighting design (L = room, LL = floor). style per room label: ceiling (n surface-mounted opal drum lamps), downlights grid (spacing, inset from walls), battens (linear LED), extras: pendants (points), beamStrip (LED under a beam), stairLights, downlightsAt [[x,y]] (designed spot positions, replace the grid), style none (no automatic fixtures), floorLamps [[x,y]], lowLights [[x,y,dir]] (LED bricks in the wall 30 cm above the floor), wallStrip [x0,y0,x1,y1,z], wallLamps [[x,y,z,dir]] (sconce on the wall face, dir = outward normal in degrees, 0 = +y), cove (attic: LED line where flat ceiling meets slopes).",
   "lighting": {

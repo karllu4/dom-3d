@@ -462,6 +462,9 @@ def main():
                     if q is not pl: reg = reg.intersection(halfplane_le(pl, q))
                 if reg.area > 1e-6: main_regions.append((pl, reg))
         overrides = {o['room']: o for o in af.get('bayLining', [])}
+        flatten = set(af.get('flattenBays', []))
+        chamfer = af.get('chamferSteps', {})            # room id -> width (m) of the inclined plane that replaces a vertical roof step
+      # rooms where the main-slope lining runs unbroken (no bay niche / vertical step)
         extra_steps = []
         for rm in out['levels'][1]['rooms']:
             room = Polygon(rm['outer'], rm['holes']).buffer(0)
@@ -469,7 +472,9 @@ def main():
             slopes, flats = [], []
             ov = next((overrides[i] for i in rm['ids'] if i in overrides), None)
             pieces = []
-            if ov:
+            if any(i in flatten for i in rm['ids']):
+                pieces = [(pl, room.intersection(reg)) for pl, reg in main_regions]
+            elif ov:
                 zx0, zx1 = ov['x']
                 zone = box(zx0, -50, zx1, 50)
                 for f in core:
@@ -493,6 +498,42 @@ def main():
                         extra_steps.append({'p': [zx, round(ya, 3), zx, round(yb, 3)], 'lo': [round(la, 3), round(lb, 3)], 'hi': [round(ha, 3), round(hb, 3)]})
             else:
                 pieces = [(f['plane'], room.intersection(Polygon(f['outer'], f['holes']).buffer(0))) for f in core]
+            cw = next((chamfer[i] for i in rm['ids'] if i in chamfer), None)
+            if cw:
+                # replace each vertical step in this room by ONE inclined plane joining the lower and the higher lining:
+                # it contains the step's bottom edge (so it meets the lower lining exactly there) and meets the higher
+                # lining along a crease at distance cw from the step; no vertical panel is left
+                import numpy as np
+                for st in out['roof']['steps']:
+                    sx0, sy0, sx1, sy1 = st['p']
+                    if abs(sx1 - sx0) > 1e-6: continue
+                    ln = LineString([(sx0, min(sy0, sy1)), (sx0, max(sy0, sy1))])
+                    inside = room.intersection(ln)
+                    if inside.is_empty or inside.length < 0.2: continue
+                    ya, yb = inside.bounds[1], inside.bounds[3]
+                    def lohi(y):
+                        t = (y - sy0) / (sy1 - sy0)
+                        return st['lo'][0] + (st['lo'][1] - st['lo'][0]) * t, st['hi'][0] + (st['hi'][1] - st['hi'][0]) * t
+                    (la, ha), (lb, hb) = lohi(ya), lohi(yb)
+                    yv, yw = (ya, yb) if (ha - la) < (hb - lb) else (yb, ya)       # valley end (no step) / tall end
+                    lv, lw = (la, lb) if yv == ya else (lb, la)
+                    ymid = (ya + yb) / 2
+                    def Hc(x, y):
+                        c = [(Hp(f['plane'], x, y), f['plane']) for f in core if Polygon(f['outer'], f['holes']).buffer(0.001).contains(Point(x, y))]
+                        return max(c, key=lambda t_: t_[0]) if c else (None, None)
+                    side = 1 if (Hc(sx0 + 0.02, ymid)[0] or -9) > (Hc(sx0 - 0.02, ymid)[0] or -9) else -1
+                    x3 = sx0 + side * cw
+                    z3, hpl = Hc(sx0 + side * 0.02, ymid)
+                    if z3 is None: continue
+                    z3 = Hp(hpl, x3, yw)
+                    Q = np.linalg.solve(np.array([[sx0, yw, 1], [sx0, yv, 1], [x3, yw, 1]], float), np.array([lw, lv, z3], float))
+                    tri = Polygon([(x3, yw), (sx0, yw), (sx0, yv)]).intersection(room)
+                    if tri.is_empty or tri.area < 0.005: continue
+                    newp = []
+                    for pl, piece in pieces:
+                        newp.append((pl, piece.difference(tri) if list(pl) == list(hpl) else piece))
+                    newp.append(([float(Q[0]), float(Q[1]), float(Q[2])], tri))
+                    pieces = newp
             for pl, piece in pieces:
                 if piece.is_empty or piece.area < 0.01: continue
                 low = piece.intersection(halfplane_le(pl, (0, 0, ceil + drop)))     # plasterboard below 2.80
@@ -501,7 +542,7 @@ def main():
                 flats += [poly_json(pp) for pp in parts(high) if pp.area > 0.005]
             fin.append({'ids': rm['ids'], 'ceil': ceil, 'slopes': slopes, 'flats': flats})
         # drop roof-slot triangles inside overridden rooms (replaced by the zone-edge steps)
-        ov_rooms = [Polygon(rm['outer'], rm['holes']) for rm in out['levels'][1]['rooms'] if any(i in overrides for i in rm['ids'])]
+        ov_rooms = [Polygon(rm['outer'], rm['holes']) for rm in out['levels'][1]['rooms'] if any(i in overrides or i in flatten or i in chamfer for i in rm['ids'])]
         keep_steps = [st for st in out['roof']['steps'] if not any(r_.buffer(0.3).intersects(LineString([st['p'][:2], st['p'][2:]])) and r_.buffer(0.3).intersection(LineString([st['p'][:2], st['p'][2:]])).length > 0.2 for r_ in ov_rooms)]
         out['atticFinish'] = {**af, 'rooms': fin, 'steps': keep_steps + extra_steps}
         print(f"[finish] attic ceiling: {sum(len(r['slopes']) for r in fin)} sloped + {sum(len(r['flats']) for r in fin)} flat pieces")

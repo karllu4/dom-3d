@@ -3,6 +3,7 @@ import type { HouseJ } from './types';
 import type { World } from './physics';
 import { solidFromRect } from './physics';
 import { makeRoofHeight } from './roof';
+import { pointInPoly } from './geometry';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { pbr } from './materials';
 
@@ -321,7 +322,18 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         const alongX = x1 - x0 >= y1 - y0, len = alongX ? x1 - x0 : y1 - y0;
         const [d0, d1] = alongX ? [y0, y1] : [x0, x1];
         const at = (a: number, d: number) => (alongX ? [x0 + a, d] : [d, y0 + a]) as [number, number];
-        const baseTop = (a: number, d: number) => { const [x, y] = at(a, d); const z = roofH(x, y) - drop - z0; return Number.isFinite(z) ? Math.min(cap, z) : cap; };
+        // top = the finished lining of the room (its sloped pieces), else the roof underside minus the lining build-up
+        const slopes = (af?.rooms ?? []).flatMap((r) => r.slopes);
+        const lining = (x: number, y: number): number | null => {
+          for (const [ox, oy] of [[0, 0], [0.004, 0], [-0.004, 0], [0, 0.004], [0, -0.004]])
+            for (const sp of slopes) if (pointInPoly(x + ox, y + oy, sp)) return sp.plane[0] * x + sp.plane[1] * y + sp.plane[2] - drop;
+          return null;
+        };
+        const baseTop = (a: number, d: number) => {
+          const [x, y] = at(a, d);
+          const z = (lining(x, y) ?? roofH(x, y) - drop) - z0;
+          return Number.isFinite(z) ? Math.min(cap, z) : cap;
+        };
         // roof steps (vertical lined triangles where a higher bay roof starts) crossing the wall: the ceiling jumps there
         // exactly at the face of the step's plasterboard (step line + board thickness, on the high side), so the wall top
         // jumps at the same place and the boards meet without a slit
