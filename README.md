@@ -1,0 +1,67 @@
+# dom-3d — house walkthrough (stage 1)
+
+First-person walkthrough of the house, generated from the architect's PDF plans
+(`C:\Users\lkarlowski\Pictures\dom_w_korlandach\plany`) and the window offers (`plany\okna`).
+
+## Run
+
+```bash
+npm install
+npm run dev          # http://localhost:5173  (open it in the Windows browser)
+```
+
+Controls: click to walk in · `WASD` walk · `Shift` run · `C` crouch · mouse look ·
+`P` plan overlay on the floor · `R` roof · `U` attic · `L` light in your room, `L L` (double) all lights on your floor (lighting design per room in `lighting` in the config: opal ceiling lamps in rooms, 3 dining pendants, LED downlights only in hall/corridors/bathrooms, kitchen beam strip, bathroom mirror strip, garage/utility battens) · `O` overview (orbit) · `M` minimap · `T` tape measure (click two points at the crosshair, distance in cm; `N` vertex snap, `Z` undo, `X` clear) · `Esc` menu (teleport to any room).
+
+## How the model is made
+
+`npm run data` (Python, `tools/build_house.py`) reads the vector PDFs and writes `public/house.json`:
+
+| What | Source |
+|---|---|
+| Walls (both floors) | bold 1.44 pt outlines in *Rzut parteru* / *Rzut poddasza*, polygonized, 1 pt = 3.5278 cm at 1:100 |
+| Rooms & floor areas | spaces enclosed by walls + openings; areas match the plan tables to ±0.1 m² |
+| Roof | planes read from *Rzut dachu*: main ridge +8.48, cross-gables +7.59 / +7.55, garage hip +6.39, pitch 38° |
+| Openings, heights, stairs | hand-entered in **`data/house-config.json`** (from plans, sections A-A / B-B and the WIKĘD offers) |
+
+Edit `data/house-config.json` and re-run `npm run data` to correct anything (window positions/heights, room names,
+spawn point, roof thickness). Requires the Python venv: `python3 -m venv .venv && .venv/bin/pip install pymupdf shapely pillow`.
+
+Orientation (fitted on the geoportal orthophoto, `site` in the config): the entrance/garage side (plan down) faces **115° (ESE)**, plan right faces 25° (NNE). Sun is computed for 53.19°N 18.08°E; set month and time in the menu. The minimap has a north arrow.
+
+## Current-state assumptions (stage 1)
+
+- Floors: raw concrete screed at finished level ±0.00 (garage −0.15, attic +3.34, room 2/8 +2.99).
+- Floors: one continuous concrete surface per floor height, running through all doorways (no sill blocks in doors).
+- Inside walls plastered; ground-floor ceilings plastered at +2.93 (garage +2.57).
+- Outside (site photos, Oct 2026): raw aerated-concrete blocks with a grey concrete ring-beam band at slab level; no render/EPS yet (EPS only in patches, not modelled).
+- Anthracite metal flashing around all roof edges (verge + eaves), per site photo.
+- Planned attic ceiling (key `I`: off → insulation → finished): flat plasterboard ceiling 2.80 m above each room floor; slopes: 5 cm vent gap, 15 cm wool between rafters, 15 cm under, 2×12.5 mm plasterboard; 30 cm wool on the flat ceiling (`atticFinish` in the config).
+- Covered terrace and entrance canopy: overhanging slab, bare concrete underside.
+- Roof underside: full pine boarding on the rafters (as on the photos), also under the overhangs.
+- Attic: no ceiling yet — the underside of the roof (rafters 8×16 every ~90 cm + membrane) is visible.
+  Rafters are 3D timbers 8×20 cm every ~90 cm (spacing assumed), plumb-cut at the eaves; hip/valley rafters same.
+  Collar ties (jętki) 2×4×20 cm: J1 main roof underside +6.79, J2 west gable +6.59, east gable +6.55 (assumed).
+  The roof plane is the underside of the rafters; membrane on the rafters, tiles `roof.thickness` (0.34 m) above.
+- Front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side follow the product photo on baranskidrzwi.pl. Opens/closes with `E`.
+- Juliet balconies on the 4 attic balcony doors built from `balkon_francuski/*.dxf` (posts, 3 rails, balusters, rings, RAL 7037).
+- One downstand beam between kitchen and dining (24 cm wide, underside +2.63 read from the plan label 311/263).
+- Garage door: Hörmann LPU 67 Thermo, L-ribbed, matt RAL 7016 anthracite (chosen, A); alternatives B oak Decograin, C flat RAL 5011 — `G` cycles, `E` opens.
+- Bays (east/west gables): walls rise to the bay roof only over the bay walls (`wallRect`, measured on Elewacje); the bay roof rakes overhang the main roof. Slots are closed only inside the house walls (bay side-wall triangles); `tools/gaps.mjs` checks for holes.
+- No interior doors installed; the side door Dz2 and the garage gate are shown as open frames.
+- Windows per the WIKĘD offers (confirmed by owner): black HS 2440 in OB1 (arcade, opening widened symmetrically
+  from 1.80 m), HS MOVE 1935 in W2 (kitchen/dining). Kitchen corner window glazing meets at the corner.
+- Roof covering: Braas Turmalin, anthracite (matt engobe) — tile size in the texture is approximate.
+- All window frames incl. both HS sliding doors in Winchester wood decor. Roof windows 78×118 (2× over 2/6, 2× over 2/8), roof hatch 45×55,
+  chimney 0.88×0.74 to +8.99 in grey clinker — all positioned from *Rzut dachu* (`roofItems` / `chimney` in the config).
+
+## Dev tools
+
+- `node tools/shot.mjs <outDir> '<views json>'` — headless screenshots (needs the dev server running).
+- `node tools/walktest.mjs` — simulated walking with fixed time steps (doorways on both floors, stairs, balcony stop, front door).
+
+## Interior design (v1)
+
+`F` toggles furniture (`furniture` in the config, `src/furniture.ts`). Ground-floor day zone follows the architect's furniture on *Rzut parteru*: kitchen L-counter with sink under the window, tall fridge column, bar counter with 3 stools on the dining side of the beam, 6-seat oak table, 3-seat sofa + loveseat, coffee table, TV wall. Lights follow it: 3 pendants over the bar (between kitchen and dining), linear pendant over the table, ceiling lamps over the sofa area and in the kitchen. With the attic hidden (`U`) the ground-floor ceilings hide too, so the overview (`O`) shows a furnished plan.
+
+Attic (v1): 2/4, 2/5, 2/2 bedrooms with 160 cm beds on the partition walls (high side), built-in wardrobes where headroom ≥ 2.2 m, low dressers under the slopes, bedside table lamps; 2/3 walk-in shelving; 2/6 freestanding tub under the roof windows, walk-in shower, double vanity + mirror strip, wall-hung WC; 2/7 washer/dryer column + counter; 2/8 gym (mat, treadmill, bench, dumbbell rack). Ceiling lamps re-centred on each room's free floor.

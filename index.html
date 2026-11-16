@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>House Walkthrough</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M1 8L8 2l7 6v7H1z%22 fill=%22%23b5562b%22/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud">
+      <div id="room">
+        <div id="room-name">—</div>
+        <div id="room-meta"></div>
+        <div id="coords"></div>
+      </div>
+      <div class="crosshair"></div>
+      <div id="hint" class="hidden"></div>
+      <div id="toast" class="hidden"></div>
+      <div id="measure-status" class="hidden"></div>
+    </div>
+
+    <button id="back" class="only-overview">Back to walking (O)</button>
+
+    <div id="menu">
+      <div class="panel">
+        <h1>House walkthrough</h1>
+        <p class="sub">Stage 1 — current build state: plastered walls, raw concrete floors, roof underside without finish.</p>
+        <button id="start" class="primary">Click to walk in</button>
+        <div class="toggles">
+          <button id="t-plan">Plan overlay <kbd>P</kbd></button>
+          <button id="t-roof">Roof <kbd>R</kbd></button>
+          <button id="t-upper">Attic <kbd>U</kbd></button>
+          <button id="t-lights">Lights: floor <kbd>L L</kbd></button>
+          <button id="t-overview">Overview <kbd>O</kbd></button>
+          <button id="t-furniture" class="on">Furniture <kbd>F</kbd></button>
+          <button id="t-measure">Measure <kbd>T</kbd></button>
+          <button id="t-finish">Attic ceiling: off <kbd>I</kbd></button>
+        </div>
+        <div class="sun">
+          <label>Month <input id="sun-month" type="range" min="1" max="12" step="1" /></label>
+          <label>Time <input id="sun-hour" type="range" min="5" max="23.5" step="0.25" /></label>
+          <div id="sun-label"></div>
+        </div>
+        <div class="help">
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+          <span><kbd>Shift</kbd> run</span>
+          <span><kbd>C</kbd> crouch</span>
+          <span><kbd>L</kbd> room light · <kbd>L</kbd><kbd>L</kbd> whole floor</span>
+          <span><kbd>E</kbd> open/close door</span>
+          <span><kbd>G</kbd> garage door design</span>
+          <span>mouse — look</span>
+          <span><kbd>M</kbd> minimap</span>
+          <span><kbd>T</kbd> tape measure (click 2 points, cm)</span>
+          <span><kbd>Esc</kbd> this menu</span>
+        </div>
+        <h2>Go to room</h2>
+        <div id="rooms"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
