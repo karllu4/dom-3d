@@ -122,7 +122,7 @@ export class TapeMeasure {
       this.ray.setFromCamera(new THREE.Vector2(0, 0), this.camera);
       this.ray.far = 60;
       const hits = this.ray.intersectObject(this.targets, true);
-      const h = hits.find((x) => (x.object as THREE.Mesh).isMesh && visibleChain(x.object) && !this.group.getObjectById(x.object.id) && (x.object as any).material?.visible !== false);
+      const h = hits.find((x) => (x.object as THREE.Mesh).isMesh && visibleChain(x.object) && !this.group.getObjectById(x.object.id) && ((x.object as THREE.Mesh).material as THREE.Material | undefined)?.visible !== false);
       this.hit = h ? h.point.clone() : null;
       if (h && snap) this.hit = this.snapToVertex(h, width, height) ?? this.hit;
       if (this.hit) this.cursorDot.position.copy(this.hit);

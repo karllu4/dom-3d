@@ -20,8 +20,16 @@ const compass = (b: number) => ['N','NE','E','SE','S','SW','W','NW'][Math.round(
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+function showToast(msg: string, ms = 2500) {
+  const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
+}
+
 async function main() {
-  const house: HouseJ = await (await fetch('house.json')).json();
+  const res = await fetch('house.json');
+  if (!res.ok) throw new Error(`house.json: HTTP ${res.status}`);
+  const house: HouseJ = await res.json();
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -185,11 +193,7 @@ async function main() {
     const b = $('t-finish');
     b.innerHTML = `Attic ceiling: ${['off', 'insulation', 'finished'][m]} <kbd>I</kbd>`;
     b.classList.toggle('on', m > 0);
-    const t = $('toast');
-    t.textContent = ['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m'][m];
-    t.classList.remove('hidden');
-    clearTimeout((t as any)._h);
-    (t as any)._h = setTimeout(() => t.classList.add('hidden'), 3000);
+    showToast(['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m'][m], 3000);
   };
   const setPlan = (v: boolean) => {
     state.plan = v;
@@ -205,10 +209,7 @@ async function main() {
   // ---------- room lighting: L = room you stand in, double L = whole floor
   const roomLights = buildLighting(house, hs.levels);
   setAtticMount(0); // attic starts bare: fixtures hang from the rafters
-  const toast = (msg: string) => {
-    const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
-    clearTimeout((t as any)._h); (t as any)._h = setTimeout(() => t.classList.add('hidden'), 2500);
-  };
+  const toast = showToast;
   // ---------- tape measure: T on/off, click = point, Z undo, X clear, N vertex snap
   const tape = new TapeMeasure(scene, camera, hs.root, $('hud'));
   let snap = true;
@@ -287,7 +288,7 @@ async function main() {
     if (e.code === 'KeyL' && !e.repeat) pressL();
     if (e.code === 'KeyQ' && !e.repeat) {
       quality.high = !quality.high;
-      const t = $('toast'); if (t) { t.textContent = quality.high ? 'Quality: photo (ambient occlusion, AgX)' : 'Quality: fast'; t.classList.remove('hidden'); clearTimeout((t as any)._h); (t as any)._h = setTimeout(() => t.classList.add('hidden'), 2000); }
+      showToast(quality.high ? 'Quality: photo (ambient occlusion, AgX)' : 'Quality: fast', 2000);
     }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
@@ -296,11 +297,7 @@ async function main() {
     if (e.code === 'KeyE' && !overview) nearestDoor()?.toggle();
     if (e.code === 'KeyG' && hs.garage) {
       hs.garage.setVariant(hs.garage.variant + 1);
-      const t = $('toast');
-      t.textContent = `Garage door: ${hs.garage.label}`;
-      t.classList.remove('hidden');
-      clearTimeout((t as any)._h);
-      (t as any)._h = setTimeout(() => t.classList.add('hidden'), 3500);
+      showToast(`Garage door: ${hs.garage.label}`, 3500);
     }
   });
   syncToggles();

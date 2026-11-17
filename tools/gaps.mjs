@@ -1,7 +1,8 @@
 // Finds holes in the envelope: sky = magenta, glass opaque, ground hidden; renders 6 views per attic room.
+import { chromePath } from './chrome.mjs';
 import { chromium } from 'playwright-core'; import os from 'node:os'; import path from 'node:path'; import fs from 'node:fs';
 const out = process.argv[2]; fs.mkdirSync(out, { recursive: true });
-const b = await chromium.launch({ executablePath: path.join(os.homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome'), args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ executablePath: chromePath(), args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 400, height: 300 } }); await p.goto('http://localhost:5173/'); await p.waitForFunction(() => window.dom3d);
 await p.evaluate(async () => {
   const d = window.dom3d; const THREE = await import('/node_modules/.vite/deps/three.js');

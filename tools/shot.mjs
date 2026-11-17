@@ -1,6 +1,7 @@
 // Headless screenshots of the running dev server.
 // Usage: node tools/shot.mjs <outDir> '<json list of views>'
 // view: { name, x, y, feet, yaw (deg, 0 = looking plan-up), pitch (deg), night?: true (23:00, all lights on), fast?: true (no post-processing), eval?: 'js expression' (result printed), overview?: true, actions?: ['plan', ...], walk?: {keys, ms} }
+import { chromePath } from './chrome.mjs';
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,7 +9,7 @@ import path from 'node:path';
 
 const [outDir, viewsJson, url = 'http://localhost:5173/'] = process.argv.slice(2);
 const views = JSON.parse(viewsJson);
-const exe = path.join(os.homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
+const exe = chromePath();
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 const logs = [];

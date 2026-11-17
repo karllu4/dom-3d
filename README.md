@@ -1,7 +1,7 @@
 # dom-3d — house walkthrough (stage 1)
 
 First-person walkthrough of the house, generated from the architect's PDF plans
-(`C:\Users\lkarlowski\Pictures\dom_w_korlandach\plany`) and the window offers (`plany\okna`).
+(kept locally, not in the repo) and the window offers (`plany\okna`).
 
 ## Run
 
@@ -12,6 +12,11 @@ npm run dev          # http://localhost:5173  (open it in the Windows browser)
 
 Controls: click to walk in · `WASD` walk (2.6 m/s) · `Shift` run (5.5 m/s) · `Q` render quality (photo: ambient occlusion + sky lighting + AgX tone mapping / fast) · `C` crouch · mouse look ·
 `P` plan overlay on the floor · `R` roof · `U` attic · `L` light in your room, `L L` (double) all lights on your floor (lighting design per room in `lighting` in the config: opal ceiling lamps in rooms, 3 dining pendants, LED downlights only in hall/corridors/bathrooms, kitchen beam strip, bathroom mirror strip, garage/utility battens) · `O` overview (orbit) · `M` minimap · `T` tape measure (click two points at the crosshair, distance in cm; `N` vertex snap, `Z` undo, `X` clear) · `Esc` menu (teleport to any room).
+
+## Checks
+
+`npm run build` type-checks and builds. `npm run smoke` (against `npm run preview`) loads the built site headless and fails on any page error or HTTP 4xx/5xx; CI runs it before deploying. Headless tools in `tools/` (`walktest`, `gaps`, `shot`) find Chromium via `$CHROME_PATH` or the newest `~/.cache/ms-playwright/chromium-*` (`npx playwright-core install chromium`).
+`public/house.json` is committed output of `npm run data`: after editing `data/house-config.json` re-run it and commit both.
 
 ## How the model is made
 

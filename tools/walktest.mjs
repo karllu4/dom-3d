@@ -1,8 +1,9 @@
 // Simulated walking with fixed time steps (independent of render speed). Reports where the player ends up.
+import { chromePath } from './chrome.mjs';
 import { chromium } from 'playwright-core';
 import os from 'node:os';
 import path from 'node:path';
-const exe = path.join(os.homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
+const exe = chromePath();
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
