@@ -38,7 +38,7 @@ Orientation (fitted on the geoportal orthophoto, `site` in the config): the entr
 
 - Photo-scanned PBR materials (colour + normal + roughness) from Poly Haven (CC0), fetched and colour-graded by
   `tools/fetch_textures.py` into `public/textures/` (screed floor, white plaster, raw pine boarding, oak veneer, wool, linen, jute, grass, paving).
-- Sky lighting: the sky (with drifting clouds) is pre-filtered into an environment map; passing clouds dim the sun.
+- Sky lighting: the sky (with static clouds) is pre-filtered into an environment map.
 - Ambient occlusion (GTAO) on the real depth buffer, AgX tone mapping; furniture has rounded edges.
 
 ## Current-state assumptions (stage 1)

@@ -91,7 +91,7 @@ export interface HouseJ {
   lighting?: { id: string; level: string; floorZ: number; ceilZ: number | null; area: number; center: Pt;
     lamps?: Pt[]; downlights?: Pt[]; battens?: [number, number, number, number][]; cove: Pt[][];
     pendants?: Pt[]; pendantDrop?: number; pendantBottom?: number; pendantTopZ?: number; tableLamps?: [number, number, number][]; wallLamps?: [number, number, number, number][]; floorLamps?: Pt[]; lowLights?: [number, number, number][]; linearPendant?: { from: Pt; to: Pt; bottom: number }; beamStrip?: string; stairLights?: boolean; wallStrip?: [number, number, number, number, number] }[];
-  atticFinish?: { flattenBays?: string[]; ceilingHeight: number; woolBetween: number; woolUnder: number; board: number; woolFlat: number;
+  atticFinish?: { flattenBays?: string[]; ceilingHeight: number; beamTunnel?: { beam: number; yWall: number; xRange?: [number, number] }; risingCeiling?: Record<string, { plane: [number, number, number]; seed: [number, number] }>; woolBetween: number; woolUnder: number; board: number; woolFlat: number;
     rooms: { ids: string[]; ceil: number; slopes: (PolyJ & { plane: Plane })[]; flats: PolyJ[] }[];
     steps?: { p: [number, number, number, number]; lo: [number, number]; hi: [number, number] }[] };
   steel?: { color: string; posts: { id: string; at: Pt; size: number; base: number }[]; beams: { id: string; from: [number, number, number]; to: [number, number, number]; w: number; h: number }[];

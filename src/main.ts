@@ -68,11 +68,11 @@ async function main() {
   su.rayleigh.value = 1.4;
   su.mieCoefficient.value = 0.004;
   su.mieDirectionalG.value = 0.8;
-  // fair-weather cumulus drifting across the sky (the same clouds dim the sun when they pass in front of it)
+  // fair-weather cumulus, static (animating them only cost frame time)
   su.cloudCoverage.value = 0.5;
   su.cloudDensity.value = 0.55;
   su.cloudScale.value = 0.00022;
-  su.cloudSpeed.value = 0.00000007; // barely perceptible drift: clouds change over minutes (shader time advances 1000 units per second)
+  su.cloudSpeed.value = 0;
   su.cloudElevation.value = 0.55;
   su.sunPosition.value.copy(sunDir);
   scene.add(sky);
@@ -90,7 +90,7 @@ async function main() {
   sun.shadow.radius = 6;            // soft penumbra: sunlight through a hazy, partly cloudy sky
   sun.shadow.blurSamples = 16;
   scene.add(sun, sun.target);
-  let sunBase = 1.7, cloudLight = 1;
+  let sunBase = 1.7;
   const sunState = { month: new Date().getMonth() + 1, hour: 13 };
   const applySun = () => {
     const sp = sunPosition(site.lat, site.lon, sunState.month, 15, sunState.hour);
@@ -98,8 +98,8 @@ async function main() {
     su.sunPosition.value.copy(sunDir);
     sun.position.copy(center).addScaledVector(sunDir, 30);
     const up = THREE.MathUtils.clamp(sp.elevation / 12, 0, 1);       // fade in after sunrise
-    sunBase = 1.25 * up;               // softened (hazy Polish sky); clouds modulate it in the frame loop
-    sun.intensity = sunBase * cloudLight;
+    sunBase = 1.25 * up;               // softened (hazy Polish sky)
+    sun.intensity = sunBase;
     const day = THREE.MathUtils.clamp((sp.elevation + 6) / 18, 0, 1);
     hemi.intensity = 0.04 + 0.35 * day;                 // small fill; most of the daylight comes from the sky env map
     ambient.intensity = 0.02 + 0.08 * day;
@@ -193,7 +193,7 @@ async function main() {
     const b = $('t-finish');
     b.innerHTML = `Attic ceiling: ${['off', 'insulation', 'finished'][m]} <kbd>I</kbd>`;
     b.classList.toggle('on', m > 0);
-    showToast(['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m'][m], 3000);
+    showToast(['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m (2/8: rising towards the door, 30 cm wool)'][m], 3000);
   };
   const setPlan = (v: boolean) => {
     state.plan = v;
@@ -332,7 +332,6 @@ async function main() {
   };
 
   // ---------- loop
-  let envClock = 0;
   const timer = new THREE.Timer();
   timer.connect(document);
   let lastRoom = '';
@@ -340,15 +339,6 @@ async function main() {
   renderer.setAnimationLoop(() => {
     timer.update();
     const dt = timer.getDelta();
-    // clouds: drift the sky, and dim the sun smoothly when a cloud passes (two slow incommensurate waves ~ 1.5-4 min)
-    su.time.value += dt * 1000;
-    const tt = su.time.value / 1000;
-    const cover = 0.5 + 0.32 * Math.sin(tt * 0.028) + 0.18 * Math.sin(tt * 0.065 + 1.7);   // 0..1, >0.6 = sun behind a cloud (every few minutes)
-    const target = 1 - 0.62 * THREE.MathUtils.smoothstep(cover, 0.55, 0.8);
-    cloudLight += (target - cloudLight) * Math.min(1, dt * 0.4);
-    sun.intensity = sunBase * cloudLight;
-    envClock += dt;
-    if (envClock > 12) { envClock = 0; updateEnv(); }                                        // refresh the sky reflections now and then
     for (const d of hs.doors) d.update(dt);
     if (overview) {
       orbit.update();

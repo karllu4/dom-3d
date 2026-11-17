@@ -196,6 +196,96 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         board.add(mesh(flatGeometry(fp, r.ceil, false), mats.plasterboard));
       }
     }
+    // insulation tunnel round the steel ridge beam where it hangs below the rising ceiling (north end of 2/8)
+    const bt = af.beamTunnel, rcPlane = Object.values(af.risingCeiling ?? {})[0]?.plane;
+    const tb = bt ? h.steel?.roofBeams?.[bt.beam] : undefined;
+    if (bt && tb && rcPlane) {
+      const rp: [number, number, number] = [rcPlane[0], rcPlane[1], rcPlane[2] - (af.woolUnder + af.board) * s];   // slope lining face
+      const xc = tb.p[0], [pa, pb, pc] = tb.planes[0];
+      const cover = af.woolUnder + af.board;
+      const zBeam = pa * xc + pb * tb.p[1] + pc;                  // underside of the steel beam (horizontal along the ridge)
+      // the tunnel's underside is the flat ceiling level of its room, so the tunnel hangs from the rising lining down to the flat ceiling
+      // and then continues in the same plane: one block, no end face or step along the beam
+      const tRoom = af.rooms.find((r) => r.ids.includes(Object.keys(af.risingCeiling ?? {})[0]));
+      const zb = (tRoom ? tRoom.ceil : zBeam - cover) + 0.003;
+      const [xL, xR] = bt.xRange ?? [xc - (tb.width / 2 + cover), xc + (tb.width / 2 + cover)];   // block width: by default just the beam, or the given span
+      const ceilAt = (y: number) => rp[0] * xc + rp[1] * y + rp[2];
+      // the tunnel is a true cuboid: it runs from the wall to where the lining face has risen to the beam's underside, i.e. until the
+      // beam no longer hangs below the lining, and ends in a vertical rectangular end face (not a tapering point where steel could peek out)
+      // ONE block: a cuboid-like box as wide as the notch in the lining (so it also swallows the step walls there), hanging from the
+      // rising lining down to the flat ceiling level; it ends exactly where the lining face comes down to that level (no end face, no step)
+      const y0 = bt.yWall;
+      const yE = (rp[0] * xc + rp[2] - zb) / -rp[1];
+      const capTop = zb;
+      if (yE > y0 && ceilAt(y0) > zb) {
+        const V = (x: number, z: number, y: number) => new THREE.Vector3(x, z, y);
+        const mid = V((xL + xR) / 2, (zb + ceilAt(y0)) / 2, (y0 + yE) / 2);
+        const build = (inset: number, zbot: number, yEnd: number, grp: THREE.Group, mat: THREE.Material, shadow: boolean, extra = 0) => {
+          const pos: number[] = [], uv: number[] = [];
+          const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => {
+            const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+            const cen = a.clone().add(b).add(c).divideScalar(3);
+            if (n.dot(cen.sub(mid)) < 0) [b, c] = [c, b];
+            for (const v of [a, b, c]) { pos.push(v.x, v.y, v.z); uv.push(v.x + v.z, v.y); }
+          };
+          const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => { tri(a, b, c); tri(a, c, d); };
+          const xl = xL + inset, xr = xR - inset;
+          const top0 = ceilAt(y0) + extra, topE = capTop + extra;       // extra: the wool reaches up into the lining layers (no sliver at the join)
+          for (const sx of [xl, xr]) quad(V(sx, zbot, y0), V(sx, zbot, yEnd), V(sx, topE, yEnd), V(sx, top0, y0));   // sides
+          quad(V(xl, zbot, y0), V(xr, zbot, y0), V(xr, zbot, yEnd), V(xl, zbot, yEnd));                                  // underside
+          quad(V(xl, zbot, yEnd), V(xr, zbot, yEnd), V(xr, topE, yEnd), V(xl, topE, yEnd));                              // end face
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+          g.computeVertexNormals();
+          grp.add(mesh(g, mat, shadow));
+        };
+        build(0, zb, yE, board, mats.plasterboard, true);
+        build(af.board, zb + af.board, yE - af.board, wool, mats.wool, false, 0.08);
+      }
+    }
+    // step walls: where the rising lining (2/8) meets the flat ceiling beside it, the lining stands higher than the flat ceiling, so a
+    // vertical wool + plasterboard wall closes the step (otherwise the room is open into the roof void and the steel beam shows through)
+    for (const [rid, rc] of Object.entries(af.risingCeiling ?? {})) {
+      const room = af.rooms.find((r) => r.ids.includes(rid));
+      if (!room) continue;
+      const dropS = (af.woolUnder + af.board) * s;
+      const hFace = (x: number, y: number) => rc.plane[0] * x + rc.plane[1] * y + rc.plane[2] - dropS;
+      for (const sp of room.slopes) {
+        if (sp.plane.some((c, i) => Math.abs(c - rc.plane[i]) > 1e-6) || !pointInPoly(rc.seed[0], rc.seed[1], sp)) continue;
+        const ring = sp.outer;
+        for (let i = 0; i < ring.length; i++) {
+          const [ax, ay] = ring[i], [bx, by] = ring[(i + 1) % ring.length];
+          const L = Math.hypot(bx - ax, by - ay);
+          if (L < 0.05) continue;
+          const mx = (ax + bx) / 2, my = (ay + by) / 2;
+          let nx = -(by - ay) / L, ny = (bx - ax) / L;
+          if (pointInPoly(mx + nx * 0.03, my + ny * 0.03, sp)) { nx = -nx; ny = -ny; }   // outward from the lining piece
+          if (!room.flats.some((fp) => pointInPoly(mx + nx * 0.03, my + ny * 0.03, fp))) continue;   // only edges that meet the flat ceiling
+          const za = Math.max(room.ceil, hFace(ax, ay)), zb2 = Math.max(room.ceil, hFace(bx, by));
+          if (Math.max(za, zb2) - room.ceil < 0.01) continue;
+          const wall = (off: number, z0: number, up: number, grp: THREE.Group, mat: THREE.Material, shadow: boolean) => {
+            const A = new THREE.Vector3(ax - nx * off, z0, ay - ny * off), B = new THREE.Vector3(bx - nx * off, z0, by - ny * off);
+            const At = new THREE.Vector3(A.x, za + up, A.z), Bt = new THREE.Vector3(B.x, zb2 + up, B.z);
+            const ref = new THREE.Vector3(nx, 0, ny);
+            const pos: number[] = [];
+            const tri = (p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3) => {
+              const n = new THREE.Vector3().subVectors(p1, p0).cross(new THREE.Vector3().subVectors(p2, p0));
+              if (n.dot(ref) < 0) [p1, p2] = [p2, p1];
+              for (const v of [p0, p1, p2]) pos.push(v.x, v.y, v.z);
+            };
+            tri(A, B, Bt); tri(A, Bt, At);
+            const g = new THREE.BufferGeometry();
+            g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            g.setAttribute('uv', new THREE.Float32BufferAttribute(Array.from({ length: pos.length / 3 }, (_, k) => [pos[k * 3] + pos[k * 3 + 2], pos[k * 3 + 1]]).flat(), 2));
+            g.computeVertexNormals();
+            grp.add(mesh(g, mat, shadow));
+          };
+          wall(0, room.ceil, 0.01, board, mats.plasterboard, true);                       // room side: board down to the flat ceiling
+          wall(af.board, room.ceil + af.board, 0.14, wool, mats.wool, false);              // wool behind it, reaching up into the lining layers
+        }
+      }
+    }
     // roof windows / hatch: plasterboard reveal through the extra lining depth (down to the board face)
     for (const it of h.roof.items) {
       const reveal = mats.plasterboard;
@@ -216,6 +306,72 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       return Number.isFinite(z) ? z : fallback;
     };
     const dropV = (af.woolUnder + af.board) * s;
+    // collar ties hanging below the slope lining (e.g. the ends over the rising ceiling of 2/8): boxed in a wool + plasterboard cuboid.
+    // Neighbouring ties with the same overhang are joined into ONE continuous bulkhead along the wall.
+    {
+      const cover = af.woolUnder + af.board, ttb = h.roof.tie.board ?? 0.04, ttd = h.roof.tie.depth ?? 0.2;
+      const off = h.roof.rafter.width / 2 + ttb / 2, halfW = off + ttb / 2 + cover;
+      type Run = { alongX: boolean; c: number; lo: number; hi: number; zb: number; zt: number; ri: number };   // c = tie axis position across, [lo, hi] = overhang along the tie
+      const runs: Run[] = [];
+      // lining face under a point and the room it belongs to (a box must stay inside its own room: no slivers through the walls)
+      const faceAt = (x: number, y: number): { face: number; ri: number } => {
+        let face = Infinity, ri = -1;
+        af.rooms.forEach((r, i) => { for (const sp of r.slopes) if (pointInPoly(x, y, sp)) {
+          const v = sp.plane[0] * x + sp.plane[1] * y + sp.plane[2] - dropV;
+          if (v < face) { face = v; ri = i; }
+        } });
+        return { face, ri };
+      };
+      const roomBox = af.rooms.map((r) => {
+        const pts = [...r.slopes, ...r.flats].flatMap((q) => q.outer);
+        return [Math.min(...pts.map((q) => q[0])), Math.min(...pts.map((q) => q[1])), Math.max(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1]))];
+      });
+      for (const tie of h.roof.ties) {
+        const [ax, ay, bx, by] = tie.p;
+        const L = Math.hypot(bx - ax, by - ay), alongX = Math.abs(bx - ax) > Math.abs(by - ay);
+        const zb = tie.z - cover;
+        let run: [number, number] | null = null, runRi = -1;
+        const flush = () => {
+          if (!run) return;
+          const [t0, t1] = run; run = null;
+          const u0 = alongX ? ax + (bx - ax) * t0 / L : ay + (by - ay) * t0 / L, u1 = alongX ? ax + (bx - ax) * t1 / L : ay + (by - ay) * t1 / L;
+          runs.push({ alongX, c: alongX ? ay : ax, lo: Math.min(u0, u1), hi: Math.max(u0, u1), zb, zt: tie.z + ttd, ri: runRi });
+        };
+        for (let t = 0; t <= L + 1e-6; t += 0.02) {
+          const [x, y] = [ax + (bx - ax) * t / L, ay + (by - ay) * t / L];
+          const { face, ri } = faceAt(x, y);
+          if (Number.isFinite(face) && zb < face - 0.015) { if (run && ri !== runRi) flush(); run = run ? [run[0], t] : [t, t]; runRi = ri; } else flush();
+        }
+        flush();
+      }
+      // cluster: same direction, same bottom, same far end (±3 cm), neighbours at most 1.2 m apart
+      runs.sort((p, q) => Number(p.alongX) - Number(q.alongX) || p.zb - q.zb || p.lo - q.lo || p.c - q.c);
+      const used = new Set<Run>();
+      for (const r0 of runs) {
+        if (used.has(r0)) continue;
+        const cl = [r0]; used.add(r0);
+        for (let grow = true; grow;) {
+          grow = false;
+          for (const r of runs) {
+            if (used.has(r) || r.alongX !== r0.alongX || r.ri !== r0.ri || Math.abs(r.zb - r0.zb) > 1e-6 || Math.abs(r.hi - r0.hi) > 0.03) continue;   // 'lo' may differ (wall niches): the box starts at the lowest
+            if (cl.some((m) => Math.abs(m.c - r.c) <= 1.2)) { cl.push(r); used.add(r); grow = true; }
+          }
+        }
+        const rb = roomBox[r0.ri];
+        let c0 = Math.max(Math.min(...cl.map((m) => m.c)) - halfW, r0.alongX ? rb[1] : rb[0]), c1 = Math.min(Math.max(...cl.map((m) => m.c)) + halfW, r0.alongX ? rb[3] : rb[2]);
+        const lo = Math.min(...cl.map((m) => m.lo)), hi = Math.max(...cl.map((m) => m.hi)) + 0.15;   // + 15 cm: past the point where the lining takes over, so no slit remains at the join (it is hidden above the lining there)
+        // a bulkhead that stops within 60 cm of a wall runs on into it, so no end face / slit is left next to the wall
+        const wLo = r0.alongX ? rb[1] : rb[0], wHi = r0.alongX ? rb[3] : rb[2];
+        if (c0 - wLo < 0.6) c0 = wLo;
+        if (wHi - c1 < 0.6) c1 = wHi;
+        if (c1 - c0 < 2 * af.board + 0.02) continue;
+        const mk = (g: number, z0: number, mat: THREE.Material, grp: THREE.Group) => grp.add(r0.alongX
+          ? box(lo, c0 + g, z0, hi, c1 - g, r0.zt, mat)
+          : box(c0 + g, lo, z0, c1 - g, hi, r0.zt, mat));
+        mk(0, r0.zb, mats.plasterboard, board);
+        mk(af.board, r0.zb + af.board, mats.wool, wool);
+      }
+    }
     for (const st of af.steps ?? h.roof.steps) {
       const [x0, y0, x1, y1] = st.p;
       const L = Math.hypot(x1 - x0, y1 - y0);
