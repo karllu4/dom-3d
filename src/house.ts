@@ -286,6 +286,26 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         }
       }
     }
+    // bare wall triangles left beside the lining: fill with wool + plasterboard panels flush on the wall (config atticFinish.wallFills)
+    for (const wf of af.wallFills ?? []) {
+      const panel = (off: number, mat: THREE.Material, grp: THREE.Group, shadow: boolean) => {
+        const c = wf.c + wf.n * off;
+        const pts = wf.poly.map(([u, z]) => (wf.axis === 'x' ? new THREE.Vector3(c, z, u) : new THREE.Vector3(u, z, c)));
+        const pos: number[] = [], ref = wf.axis === 'x' ? new THREE.Vector3(wf.n, 0, 0) : new THREE.Vector3(0, 0, wf.n);
+        for (let i = 1; i + 1 < pts.length; i++) {
+          let [a, b, c] = [pts[0], pts[i], pts[i + 1]];
+          if (new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).dot(ref) < 0) [b, c] = [c, b];
+          for (const v of [a, b, c]) pos.push(v.x, v.y, v.z);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(Array.from({ length: pos.length / 3 }, (_, k) => [pos[k * 3], pos[k * 3 + 1]]).flat(), 2));
+        g.computeVertexNormals();
+        grp.add(mesh(g, mat, shadow));
+      };
+      panel(0.005, mats.wool, wool, false);
+      panel(af.board + 0.005, mats.plasterboard, board, true);
+    }
     // roof windows / hatch: plasterboard reveal through the extra lining depth (down to the board face)
     for (const it of h.roof.items) {
       const reveal = mats.plasterboard;
