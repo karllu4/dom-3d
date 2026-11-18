@@ -130,9 +130,21 @@ async function main() {
     scene.environmentIntensity = 0.01 + 0.12 * day;
     if (envTimer) clearTimeout(envTimer);
     envTimer = setTimeout(() => updateEnv(), envRT ? 120 : 0);   // re-filter the sky once the slider settles
+    const when = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sunState.month - 1]} 15, ${String(Math.floor(sunState.hour)).padStart(2, '0')}:${String(Math.round((sunState.hour % 1) * 60)).padStart(2, '0')}`;
+    const where = `sun ${sp.elevation.toFixed(0)}° high, from ${compass(sp.azimuth)}`;
     const lbl = document.getElementById('sun-label');
-    if (lbl) lbl.textContent = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sunState.month - 1]} 15, ${String(Math.floor(sunState.hour)).padStart(2, '0')}:${String(Math.round((sunState.hour % 1) * 60)).padStart(2, '0')} · sun ${sp.elevation.toFixed(0)}° high, from ${compass(sp.azimuth)}`;
+    if (lbl) lbl.textContent = `${when} · ${where}`;
+    document.getElementById('sim-when')!.textContent = when;       // always-visible simulation clock
+    document.getElementById('sim-where')!.textContent = where;
   };
+  /** + / - : move the simulated time half an hour later / earlier (the slider's range is 05:00-23:30) */
+  const stepTime = (d: number) => {
+    sunState.hour = Math.min(23.5, Math.max(5, sunState.hour + d));
+    (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour);
+    applySun();
+  };
+  $('sim-later').onclick = () => stepTime(0.5);
+  $('sim-earlier').onclick = () => stepTime(-0.5);
   // Sunlight does not bounce in a rasterizer, so interiors get a soft, nearly neutral fill:
   // hemisphere (sky above, warm floor bounce below) + a little ambient for down-facing ceilings.
   const hemi = new THREE.HemisphereLight(0xf2f5ff, 0xd9cfbf, 1.25);
@@ -331,6 +343,8 @@ async function main() {
     const a = map[e.code];
     if (a) { actions[a](); syncToggles(); }
     if (e.code === 'KeyM') $('minimap').classList.toggle('hidden');
+    if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') && !e.repeat) stepTime(0.5);
+    if ((e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') && !e.repeat) stepTime(-0.5);
     if (e.code === 'KeyL' && !e.repeat) pressL();
     if (e.code === 'KeyK' && !e.repeat) cycleRoomScene();
     if (e.code === 'KeyQ' && !e.repeat) {
