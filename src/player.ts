@@ -16,6 +16,8 @@ export class Player {
   private eyeSmooth = 0;
   private keys = new Set<string>();
   crouch = false;
+  /** while measuring, W means 'distance to the nearest wall' (use the arrow keys to walk) */
+  blockW = false;
   /** on-screen joystick (phones): x right, y down, -1..1; `active` = walking without pointer lock */
   touch = { x: 0, y: 0, active: false };
 
@@ -59,7 +61,7 @@ export class Player {
     dt = Math.min(dt, 0.05);
     const k = this.keys;
     let f = 0, s = 0;
-    if (k.has('KeyW') || k.has('ArrowUp')) f += 1;
+    if ((k.has('KeyW') && !this.blockW) || k.has('ArrowUp')) f += 1;
     if (k.has('KeyS') || k.has('ArrowDown')) f -= 1;
     if (k.has('KeyD') || k.has('ArrowRight')) s += 1;
     if (k.has('KeyA') || k.has('ArrowLeft')) s -= 1;

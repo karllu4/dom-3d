@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { World } from './physics';
+import { pointInRing } from './geometry';
 
 // Tape measure: press T, then click two points at the crosshair. Distance is shown in cm.
 // Points land on the surface hit by the crosshair ray; with snap on (N) they jump to a nearby mesh vertex (corners).
@@ -86,6 +88,11 @@ export class TapeMeasure {
     if (!this.start) { this.start = p; this.startDot.position.copy(p); this.syncVisibility(); return null; }
     const a = this.start;
     this.start = null;
+    return this.commit(a, p);
+  }
+
+  /** Store a finished measurement a -> b and return its length (m). */
+  private commit(a: THREE.Vector3, p: THREE.Vector3): number {
     const g = new THREE.Group();
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, p]), this.lineMat);
     line.renderOrder = 999; line.frustumCulled = false;
@@ -98,6 +105,44 @@ export class TapeMeasure {
     this.list.push({ a, b: p, group: g, label });
     this.syncVisibility();
     return a.distanceTo(p);
+  }
+
+  /** The selected point: the pending start point, else the point under the crosshair. */
+  private selected() { return this.start ?? this.hit; }
+
+  /** Distance from the selected point to the nearest wall (horizontal, at the point's height). Returns metres or null. */
+  toWall(world: World): number | null {
+    const p = this.selected();
+    if (!this.active || !p) return null;
+    let best = Infinity, bx = 0, by = 0;
+    for (const s of world.solids) {
+      if (s.tag !== 'wall' || s.off || p.y < s.z0 - 0.02 || p.y > s.z1 + 0.02) continue;
+      const [x0, y0, x1, y1] = s.bbox;
+      if (p.x < x0 - best || p.x > x1 + best || p.z < y0 - best || p.z > y1 + best) continue;   // cannot beat the best so far
+      if (pointInRing(p.x, p.z, s.ring)) continue;                      // standing inside a wall piece: not a wall face to measure to
+      const r = s.ring;
+      for (let i = 0; i < r.length; i++) {
+        const [ax, ay] = r[i], [cx, cy] = r[(i + 1) % r.length];
+        const ex = cx - ax, ey = cy - ay;
+        const t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - ay) * ey) / (ex * ex + ey * ey || 1)));
+        const qx = ax + ex * t, qy = ay + ey * t, d = Math.hypot(p.x - qx, p.z - qy);
+        if (d < best) { best = d; bx = qx; by = qy; }
+      }
+    }
+    if (!Number.isFinite(best)) return null;
+    return this.commit(p.clone(), new THREE.Vector3(bx, p.y, by));
+  }
+
+  /** Distance from the selected point straight down to the floor (or whatever surface is below). Returns metres or null. */
+  toFloor(): number | null {
+    const p = this.selected();
+    if (!this.active || !p) return null;
+    this.ray.set(p.clone().add(new THREE.Vector3(0, 0.002, 0)), new THREE.Vector3(0, -1, 0));
+    this.ray.far = 30;
+    const hits = this.ray.intersectObject(this.targets, true);
+    const h = hits.find((x) => (x.object as THREE.Mesh).isMesh && visibleChain(x.object) && !this.group.getObjectById(x.object.id) && ((x.object as THREE.Mesh).material as THREE.Material | undefined)?.visible !== false);
+    if (!h) return null;
+    return this.commit(p.clone(), new THREE.Vector3(p.x, h.point.y, p.z));
   }
 
   private text(a: THREE.Vector3, b: THREE.Vector3) {

@@ -262,10 +262,10 @@ async function main() {
   const tape = new TapeMeasure(scene, camera, hs.root, $('hud'));
   let snap = true;
   const tapeStatus = () => {
-    $('measure-status').textContent = tape.active ? `Measure · click 2 points · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
+    $('measure-status').textContent = tape.active ? `Measure · click 2 points · W nearest wall · H floor · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
     $('measure-status').classList.toggle('hidden', !tape.active);
   };
-  const toggleTape = () => { tape.toggle(); $('t-measure').classList.toggle('on', tape.active); tapeStatus(); };
+  const toggleTape = () => { tape.toggle(); player.blockW = tape.active; $('t-measure').classList.toggle('on', tape.active); tapeStatus(); };
   document.addEventListener('mousedown', (e) => {
     if (e.button === 0 && tape.active && player.controls.isLocked && !overview) {
       const d = tape.click();
@@ -353,6 +353,11 @@ async function main() {
     }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
+    if (tape.active && !e.repeat && (e.code === 'KeyW' || e.code === 'KeyH')) {
+      // from the selected point (first click, else the crosshair): W = nearest wall, H = straight down to the floor
+      const d = e.code === 'KeyW' ? tape.toWall(hs.world) : tape.toFloor();
+      toast(d === null ? (e.code === 'KeyW' ? 'No wall found at that height' : 'Nothing below that point') : `${e.code === 'KeyW' ? 'To nearest wall' : 'To floor'}: ${(d * 100).toFixed(1)} cm`);
+    }
     if (tape.active && (e.code === 'KeyZ' || e.code === 'Backspace')) tape.undo();
     if (e.code === 'KeyX' && tape.count) { tape.clear(); toast('Measurements cleared'); }
     if (e.code === 'KeyE' && !overview) nearestDoor()?.toggle();
