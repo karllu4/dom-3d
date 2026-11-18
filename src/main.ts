@@ -12,7 +12,7 @@ import { buildHouse } from './house';
 import { Player } from './player';
 import { Minimap, roomAt, levelForFeet } from './hud';
 import { sunPosition, bearingToWorld } from './sun';
-import { buildLighting, setLight, setAtticMount } from './lighting';
+import { buildLighting, setLight, setScene, nextScene, SCENE_NAMES, setAtticMount } from './lighting';
 import { buildFurniture } from './furniture';
 import { TapeMeasure } from './measure';
 
@@ -26,10 +26,33 @@ function showToast(msg: string, ms = 2500) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
 }
 
+// ---------- loading screen (the markup is in index.html, so it shows before this script has even downloaded)
+function progress(frac: number, text: string) {
+  const l = document.getElementById('loader'); if (!l) return;
+  l.classList.remove('indeterminate');
+  const pct = Math.round(Math.min(1, Math.max(0, frac)) * 100);
+  $('loader-fill').style.width = `${pct}%`;
+  $('loader-pct').textContent = `${pct}%`;
+  $('loader-text').textContent = text;
+}
+/** Let the browser paint between the heavy synchronous build steps (rAF stalls in background tabs, hence the timeout race). */
+const nextFrame = () => new Promise<void>((r) => { const t = setTimeout(r, 60); requestAnimationFrame(() => { clearTimeout(t); setTimeout(r, 0); }); });
+const stage = async (frac: number, text: string) => { progress(frac, text); await nextFrame(); };
+function hideLoader() {
+  const l = document.getElementById('loader'); if (!l) return;
+  l.classList.add('done');
+  setTimeout(() => l.remove(), 600);
+}
+
 async function main() {
+  // textures stream in while the house is built: count them for the progress bar
+  const tex = { loaded: 0, total: 0 };
+  THREE.DefaultLoadingManager.onProgress = (_u, loaded, total) => { tex.loaded = loaded; tex.total = total; };
+  await stage(0.02, 'Loading plan data…');
   const res = await fetch('house.json');
   if (!res.ok) throw new Error(`house.json: HTTP ${res.status}`);
   const house: HouseJ = await res.json();
+  await stage(0.08, 'Setting up the renderer…');
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -136,13 +159,16 @@ async function main() {
   scene.add(camera);
 
   // ---------- house
+  await stage(0.16, 'Building walls, floors and roof…');
   const mats = makeMaterials();
   const hs = buildHouse(house, mats);
   scene.add(hs.root);
+  await stage(0.46, 'Furnishing the rooms…');
   const furnitureGroups = buildFurniture(house, hs.world);
   for (const [lv, grp] of Object.entries(furnitureGroups)) hs.levels[lv].add(grp);
   const furniture = { get visible() { return furnitureGroups.parter.visible; }, set visible(v: boolean) { for (const grp of Object.values(furnitureGroups)) grp.visible = v; } };
 
+  await stage(0.58, 'Placing the player…');
   // ---------- player & overview
   const player = new Player(camera, renderer.domElement, hs.world);
   player.teleport(house.spawn.x, house.spawn.y, house.outside.groundZ, house.spawn.yawDeg);
@@ -207,6 +233,7 @@ async function main() {
     const c = hs.levels['parter'].getObjectByName('ceilings'); if (c) c.visible = v;   // look into the ground floor from above
   };
   // ---------- room lighting: L = room you stand in, double L = whole floor
+  await stage(0.62, 'Installing the lighting…');
   const roomLights = buildLighting(house, hs.levels);
   setAtticMount(0); // attic starts bare: fixtures hang from the rafters
   const toast = showToast;
@@ -231,6 +258,15 @@ async function main() {
     const on = !ls.some((r) => r.on);
     ls.forEach((r) => setLight(r, on));
     toast(`${label.id} ${label.name}: light ${on ? 'on' : 'off'}`);
+  };
+  // K: cycle the scene of the room you stand in: all lights -> evening (ambient dimmed, task halved) -> night lights only -> off
+  const cycleRoomScene = () => {
+    const { label } = roomAt(house, player.pos.x, player.pos.y, player.feet);
+    const ls = label ? roomLights.filter((r) => r.id === label.id) : [];
+    if (!label || !ls.length) { toast('Not inside a lit room'); return; }
+    const next = nextScene(ls[0].scene);
+    ls.forEach((r) => setScene(r, next));
+    toast(`${label.id} ${label.name}: ${SCENE_NAMES[next]}`);
   };
   const toggleFloorLights = () => {
     const level = levelForFeet(house, overview ? 0 : player.feet);
@@ -286,6 +322,7 @@ async function main() {
     if (a) { actions[a](); syncToggles(); }
     if (e.code === 'KeyM') $('minimap').classList.toggle('hidden');
     if (e.code === 'KeyL' && !e.repeat) pressL();
+    if (e.code === 'KeyK' && !e.repeat) cycleRoomScene();
     if (e.code === 'KeyQ' && !e.repeat) {
       quality.high = !quality.high;
       showToast(quality.high ? 'Quality: photo (ambient occlusion, AgX)' : 'Quality: fast', 2000);
@@ -330,6 +367,19 @@ async function main() {
     }
     return best;
   };
+
+  // ---------- wait for textures, compile shaders, draw one hidden frame, then reveal
+  await stage(0.68, 'Loading textures…');
+  while (tex.total > tex.loaded) {
+    progress(0.68 + 0.22 * (tex.loaded / Math.max(1, tex.total)), `Loading textures ${tex.loaded}/${tex.total}…`);
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  await stage(0.92, 'Compiling shaders…');
+  try { await renderer.compileAsync(scene, camera); } catch { /* the first real frame compiles them anyway */ }
+  await stage(0.97, 'Preparing the first frame…');
+  renderer.setRenderTarget(sceneRT); renderer.render(scene, camera); renderer.setRenderTarget(null); composer.render(0);
+  progress(1, 'Ready');
+  hideLoader();
 
   // ---------- loop
   const timer = new THREE.Timer();

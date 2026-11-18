@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { HouseJ } from './types';
 import { makeRoofHeight } from './roof';
+import { pointInPoly } from './geometry';
 
 /**
  * Lighting design per room label (data from build_house.py `lighting`):
@@ -9,14 +10,40 @@ import { makeRoofHeight } from './roof';
  *  - pendants over the dining table, LED step lights along the stairs
  * Each room gets 1-3 real point lights (shadowless) at the centres of its fixture groups; the fixtures glow.
  */
-export interface RoomLight { id: string; level: string; lights: THREE.Light[]; glows: THREE.MeshStandardMaterial[]; on: boolean }
+export type Layer = 'ambient' | 'task' | 'accent' | 'night';
+export type Scene = 'full' | 'evening' | 'night' | 'off';
+export interface RoomLight { id: string; level: string; lights: THREE.Light[]; glows: THREE.MeshStandardMaterial[]; on: boolean; scene: Scene }
 
-const WARM = 0xffdcb0;
+/** Per-layer brightness of each scene (each layer = its own dimmer, as the lighting guides recommend). */
+const SCENES: Record<Scene, Record<Layer, number>> = {
+  full: { ambient: 1, task: 1, accent: 1, night: 1 },
+  evening: { ambient: 0.35, task: 0.5, accent: 1, night: 0 },
+  night: { ambient: 0, task: 0, accent: 0, night: 1 },
+  off: { ambient: 0, task: 0, accent: 0, night: 0 },
+};
+export const SCENE_NAMES: Record<Scene, string> = { full: 'all lights', evening: 'evening (dimmed)', night: 'night lights', off: 'off' };
+const SCENE_ORDER: Scene[] = ['full', 'evening', 'night', 'off'];
+export const nextScene = (s: Scene): Scene => SCENE_ORDER[(SCENE_ORDER.indexOf(s) + 1) % SCENE_ORDER.length];
+
+const WARM = 0xffdcb0;   // the look of the default 3000 K
+/** Tint of a light of the given colour temperature, relative to the default 3000 K (Tanner Helland's blackbody approximation). */
+function kelvinRgb(k: number): [number, number, number] {
+  const t = k / 100;
+  const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+  const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  return [r, g, b].map((v) => Math.min(255, Math.max(0, v)) / 255) as [number, number, number];
+}
+function cctColor(k: number): THREE.Color {
+  const c = new THREE.Color(WARM);
+  const ref = kelvinRgb(3000), tgt = kelvinRgb(k);
+  return c.setRGB(Math.min(1, c.r * tgt[0] / ref[0]), Math.min(1, c.g * tgt[1] / ref[1]), Math.min(1, c.b * tgt[2] / ref[2]));
+}
 const POWER = 0.32;
 const SPOT = 3.6;   // light output of one recessed LED spot (same units as the other fixtures' power) // overall dimmer (tuned so a fully lit floor is not overexposed)
 
-function glowMat() {
-  return new THREE.MeshStandardMaterial({ color: 0xe8e4dc, emissive: WARM, emissiveIntensity: 0, roughness: 0.35 });
+function glowMat(col: THREE.Color) {
+  return new THREE.MeshStandardMaterial({ color: 0xe8e4dc, emissive: col, emissiveIntensity: 0, roughness: 0.35 });
 }
 
 function strip(a: THREE.Vector3, b: THREE.Vector3, mat: THREE.Material, w = 0.025, h = 0.012): THREE.Mesh {
@@ -49,6 +76,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   const dropV = af ? (af.woolUnder + af.board) * Math.sqrt(1 + h.roof.k * h.roof.k) : 0;
   const trim = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
   const black = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.4, metalness: 0.4 });
+  const arcus = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.75, metalness: 0.1, flatShading: true });   // matte black, fluted look from the facets
   const ringGeo = new THREE.CylinderGeometry(0.048, 0.048, 0.008, 24);
   const lensGeo = new THREE.CylinderGeometry(0.032, 0.026, 0.012, 20);
   const out: RoomLight[] = [];
@@ -63,7 +91,11 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     return mode === 1 ? fin + (af?.board ?? 0.025) * (fin < floor + flatCeil - 1e-3 ? s3 : 1) : fin;
   };
   const atticFloors = (h.lighting ?? []).filter((l) => l.level !== 'parter');
+  const atticRooms = h.levels.filter((lv) => lv.id !== 'parter').flatMap((lv) => lv.rooms);
   const atticFloorAt = (x: number, y: number) => {
+    // the floor of the room the point lies in (a lamp near a room boundary must not take the neighbour's floor: it would hang below its ceiling)
+    const inside = atticRooms.find((r) => pointInPoly(x, y, r));
+    if (inside) return inside.floorZ;
     let best = atticFloors[0]?.floorZ ?? 3.34, bd = Infinity;
     for (const l of atticFloors) { const d = Math.hypot(l.center[0] - x, l.center[1] - y); if (d < bd) { bd = d; best = l.floorZ; } }
     return best;
@@ -73,7 +105,12 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     const g = levels[L.level];
     const attic = L.level !== 'parter';
     const track = (obj: THREE.Object3D, x: number, y: number) => { if (attic) movers.push({ obj, x, y, off: obj.position.y - ceilAt(x, y) }); };
-    const glow = glowMat();
+    const col = cctColor(L.cct ?? 3000);
+    const gain = L.gain ?? 1;
+    // one glow material per layer, so every layer dims on its own
+    const glows: Partial<Record<Layer, THREE.MeshStandardMaterial>> = {};
+    const glowOf = (layer: Layer) => (glows[layer] ??= Object.assign(glowMat(col), { userData: { layer } }));
+    const glow = glowOf('ambient');
     const lights: THREE.Light[] = [];
     // ceiling height at a plan point: ground floor ceiling; attic = finished ceiling (flat 2.80 or lined slope)
     const ceilAt = (x: number, y: number) => {
@@ -81,20 +118,22 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const flat = L.floorZ + (af?.ceilingHeight ?? 2.8);
       return Math.min(flat, roofH(x, y) - dropV);
     };
-    const addLight = (x: number, y: number, z: number, power: number) => {
-      const pl = new THREE.PointLight(WARM, 0, 0, 2);
+    const addLight = (x: number, y: number, z: number, power: number, layer: Layer = 'ambient') => {
+      const pl = new THREE.PointLight(col, 0, 0, 2);
       pl.position.set(x, z, y);
-      pl.userData.power = power;
+      pl.userData.power = power * gain;
+      pl.userData.layer = layer;
       g.add(pl);
       lights.push(pl);
       track(pl, x, y);
     };
     // recessed downlights shine down only: a wide cone from just under the ceiling, so the ceiling itself stays unlit
     const addSpot = (x: number, y: number, z: number, power: number) => {
-      const sl = new THREE.SpotLight(WARM, 0, 0, THREE.MathUtils.degToRad(62), 0.75, 2);
+      const sl = new THREE.SpotLight(col, 0, 0, THREE.MathUtils.degToRad(62), 0.75, 2);
       sl.position.set(x, z, y);
       sl.target.position.set(x, z - 3, y);
-      sl.userData.power = power;
+      sl.userData.power = power * gain;
+      sl.userData.layer = 'ambient';
       g.add(sl, sl.target);
       lights.push(sl);
       track(sl, x, y);
@@ -167,9 +206,22 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         const rose = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 16), black);
         rose.position.set(x, z - 0.01, y);
         g.add(cable, shade, bulb, rose);
+        for (const o of [cable, shade, bulb, rose]) track(o, x, y);   // attic: follows the ceiling surface of the shown build stage
       }
       const cx = L.pendants.reduce((s, p) => s + p[0], 0) / L.pendants.length, cy = L.pendants.reduce((s, p) => s + p[1], 0) / L.pendants.length;
       addLight(cx, cy, L.floorZ + (L.pendantBottom ?? ceilAt(cx, cy) - L.floorZ - (L.pendantDrop ?? 0.8)) - 0.15, 7);
+    }
+
+    // --- surface-mounted spot tubes (e.g. 4fundesign "Arcus" black, GU10, fluted matte cylinder 6.5 x 10 cm): sit ON the plasterboard, nothing recessed
+    for (const [x, y] of L.surfaceSpots ?? []) {
+      const z = ceilAt(x, y);
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.0325, 0.0325, 0.10, 20), arcus);
+      body.position.set(x, z - 0.05, y);
+      const lens = new THREE.Mesh(lensGeo, glow);
+      lens.position.set(x, z - 0.106, y);
+      g.add(body, lens);
+      track(body, x, y); track(lens, x, y);
+      addSpot(x, y, z - 0.11, SPOT);
     }
 
     // --- table / bedside lamps standing on furniture: linen drum shade on a slim base
@@ -178,11 +230,11 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       base.position.set(x, z + 0.02, y);
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.28, 8), black);
       stem.position.set(x, z + 0.18, y);
-      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.18, 28, 1, true), glow);
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.18, 28, 1, true), glowOf('accent'));
       shade.material.side = THREE.DoubleSide;
       shade.position.set(x, z + 0.36, y);
       g.add(base, stem, shade);
-      addLight(x, y, z + 0.36, 1.2);
+      addLight(x, y, z + 0.36, 1.2, 'accent');
     }
 
     // --- floor lamps (reading corner by the sofa): black round base, slim pole, linen drum shade at 1.5 m
@@ -191,16 +243,17 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       base.position.set(x, L.floorZ + 0.01, y);
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.42, 10), black);
       pole.position.set(x, L.floorZ + 0.73, y);
-      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.3, 32, 1, true), glow);
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.3, 32, 1, true), glowOf('accent'));
       shade.material.side = THREE.DoubleSide;
       shade.position.set(x, L.floorZ + 1.55, y);
       g.add(base, pole, shade);
-      addLight(x, y, L.floorZ + 1.5, 2);
+      addLight(x, y, L.floorZ + 1.5, 2, 'accent');
     }
 
     // --- wall sconces (e.g. above a bed headboard): wall plate, short arm, linen cylinder shade.
     //     [x, y, z, dir]: point on the wall face, absolute height, dir = degrees of the outward normal (0 = +y, 90 = +x)
-    for (const [x, y, z, dir] of L.wallLamps ?? []) {
+    for (const [x, y, z, dir, layer = 'accent'] of L.wallLamps ?? []) {
+      const wl = layer as Layer;
       const nx = Math.sin(THREE.MathUtils.degToRad(dir)), ny = Math.cos(THREE.MathUtils.degToRad(dir));
       const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.015, 20), black);
       plate.rotation.x = Math.PI / 2; plate.rotation.y = THREE.MathUtils.degToRad(dir);   // disc flat against the wall
@@ -208,11 +261,11 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const arm = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.12), black);
       arm.rotation.y = THREE.MathUtils.degToRad(dir);
       arm.position.set(x + nx * 0.07, z, y + ny * 0.07);
-      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.16, 24, 1, true), glow);
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.16, 24, 1, true), glowOf(wl));
       shade.material.side = THREE.DoubleSide;
       shade.position.set(x + nx * 0.16, z, y + ny * 0.16);
       g.add(plate, arm, shade);
-      addLight(x + nx * 0.16, y + ny * 0.16, z, 1.2);
+      addLight(x + nx * 0.16, y + ny * 0.16, z, 1.2, wl);
     }
 
     // --- linear pendant over the dining table: black bar with opal underside on two cables
@@ -236,15 +289,24 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const b = h.beams?.find((x) => x.id === L.beamStrip);
       if (b) {
         const [x0, y0, x1, y1] = b.rect;
-        for (const yy of [y0 - 0.005, y1 + 0.005]) g.add(strip(new THREE.Vector3(x0 + 0.05, b.bottom + 0.02, yy), new THREE.Vector3(x1 - 0.05, b.bottom + 0.02, yy), glow, 0.012, 0.012));
-        addLight((x0 + x1) / 2, (y0 + y1) / 2, b.bottom - 0.05, 3);
+        for (const yy of [y0 - 0.005, y1 + 0.005]) g.add(strip(new THREE.Vector3(x0 + 0.05, b.bottom + 0.02, yy), new THREE.Vector3(x1 - 0.05, b.bottom + 0.02, yy), glowOf('accent'), 0.012, 0.012));
+        addLight((x0 + x1) / 2, (y0 + y1) / 2, b.bottom - 0.05, 3, 'accent');
       }
     }
 
     // --- LED wall strip (bathroom mirror line)
     if (L.wallStrip) {
       const [x0, y0, x1, y1, z] = L.wallStrip;
-      g.add(strip(new THREE.Vector3(x0, z, y0), new THREE.Vector3(x1, z, y1), glow, 0.03, 0.02));
+      g.add(strip(new THREE.Vector3(x0, z, y0), new THREE.Vector3(x1, z, y1), glowOf('task'), 0.03, 0.02));
+      addLight((x0 + x1) / 2, (y0 + y1) / 2, z - 0.4, 1.5, 'task');   // soft frontal light on the face at the mirror
+    }
+
+    // --- free LED strips: [from, to] in absolute coordinates; layer 'task' (under-cabinet / over the worktop) or 'accent' (e.g. TV halo)
+    for (const s of L.strips ?? []) {
+      const layer = (s.layer ?? 'task') as Layer;
+      const a = new THREE.Vector3(s.from[0], s.from[2], s.from[1]), b = new THREE.Vector3(s.to[0], s.to[2], s.to[1]);
+      g.add(strip(a, b, glowOf(layer), 0.02, 0.012));
+      if (s.power) { const m = a.clone().add(b).multiplyScalar(0.5); addLight(m.x + (s.lightOff?.[0] ?? 0), m.z + (s.lightOff?.[1] ?? 0), m.y + (s.lightOff?.[2] ?? -0.15), s.power, layer); }
     }
 
     // --- low orientation lights: small recessed LED bricks in the wall 30 cm above the floor, light aimed down at the floor
@@ -254,11 +316,11 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const frame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.01), black);
       frame.rotation.y = THREE.MathUtils.degToRad(dir);
       frame.position.set(x + nx * 0.004, L.floorZ + 0.3, y + ny * 0.004);
-      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.025, 0.012), glow);
+      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.025, 0.012), glowOf('night'));
       lens.rotation.y = THREE.MathUtils.degToRad(dir);
       lens.position.set(x + nx * 0.005, L.floorZ + 0.29, y + ny * 0.005);
       g.add(frame, lens);
-      addLight(x + nx * 0.15, y + ny * 0.15, L.floorZ + 0.25, 0.9);
+      addLight(x + nx * 0.15, y + ny * 0.15, L.floorZ + 0.25, 0.9, 'night');
     }
 
     // --- stair step lights: small LED bricks in the wall beside every 2nd tread
@@ -266,23 +328,23 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const st = h.stairs;
       for (let i = 1; i < st.treads; i += 2) {
         const x = st.x0 + (i + 0.5) * st.tread, z = (i + 1) * st.rise + 0.25;
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.012), glow);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.012), glowOf('night'));
         m.position.set(x, z, st.y1 - 0.006);
         g.add(m);
       }
-      addLight(st.x0 + st.tread * st.treads * 0.5, (st.y0 + st.y1) / 2, 1.6, 3);
+      addLight(st.x0 + st.tread * st.treads * 0.5, (st.y0 + st.y1) / 2, 1.6, 3, 'night');
     }
 
     // --- attic cove: hidden LED line along the edge of the flat ceiling (indirect glow)
     for (const line of L.cove) {
       const z = L.floorZ + (af?.ceilingHeight ?? 2.8) - 0.02;
       for (let i = 0; i < line.length - 1; i++) {
-        g.add(strip(new THREE.Vector3(line[i][0], z, line[i][1]), new THREE.Vector3(line[i + 1][0], z, line[i + 1][1]), glow, 0.02, 0.01));
+        g.add(strip(new THREE.Vector3(line[i][0], z, line[i][1]), new THREE.Vector3(line[i + 1][0], z, line[i + 1][1]), glowOf('accent'), 0.02, 0.01));
       }
     }
-    if (L.cove.length) addLight(L.center[0], L.center[1], L.floorZ + (af?.ceilingHeight ?? 2.8) - 0.3, 2 + 0.15 * L.area);
+    if (L.cove.length) addLight(L.center[0], L.center[1], L.floorZ + (af?.ceilingHeight ?? 2.8) - 0.3, 2 + 0.15 * L.area, 'accent');
 
-    out.push({ id: L.id, level: L.level, lights, glows: [glow], on: false });
+    out.push({ id: L.id, level: L.level, lights, glows: Object.values(glows) as THREE.MeshStandardMaterial[], on: false, scene: 'off' });
   }
   // ceiling cassette air conditioners: white panel with 4 outlet slots + corner outlets and a central intake grille,
   // the unit body sits above the ceiling (visible only while the attic ceiling is open)
@@ -316,8 +378,12 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   return out;
 }
 
-export function setLight(r: RoomLight, on: boolean) {
-  r.on = on;
-  for (const l of r.lights) l.intensity = on ? l.userData.power * POWER : 0;
-  for (const m of r.glows) m.emissiveIntensity = on ? 3 : 0;
+export function setScene(r: RoomLight, scene: Scene) {
+  r.scene = scene;
+  r.on = scene !== 'off';
+  const lv = SCENES[scene];
+  for (const l of r.lights) l.intensity = l.userData.power * POWER * lv[l.userData.layer as Layer];
+  for (const m of r.glows) m.emissiveIntensity = 3 * lv[m.userData.layer as Layer];
 }
+
+export function setLight(r: RoomLight, on: boolean) { setScene(r, on ? 'full' : 'off'); }

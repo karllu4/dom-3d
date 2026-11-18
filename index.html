@@ -5,8 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>House Walkthrough</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M1 8L8 2l7 6v7H1z%22 fill=%22%23b5562b%22/%3E%3C/svg%3E" />
+    <style>
+      #loader { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #14130f; color: #eeeae2; font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; transition: opacity .45s ease; }
+      #loader.done { opacity: 0; pointer-events: none; }
+      #loader h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+      #loader .bar { width: min(360px, 80vw); height: 6px; border-radius: 3px; background: #35322c; overflow: hidden; position: relative; }
+      #loader .fill { height: 100%; width: 0%; border-radius: 3px; background: #b5562b; transition: width .25s ease; }
+      #loader.indeterminate .fill { width: 35%; position: absolute; animation: ld-slide 1.2s ease-in-out infinite; transition: none; }
+      @keyframes ld-slide { 0% { left: -35%; } 100% { left: 100%; } }
+      #loader .row { width: min(360px, 80vw); display: flex; justify-content: space-between; color: #a39d92; font-size: 13px; }
+    </style>
   </head>
   <body>
+    <div id="loader" class="indeterminate">
+      <h1>House walkthrough</h1>
+      <div class="bar"><div class="fill" id="loader-fill"></div></div>
+      <div class="row"><span id="loader-text">Downloading…</span><span id="loader-pct"></span></div>
+    </div>
     <div id="app"></div>
 
     <div id="hud">
@@ -48,6 +63,7 @@
           <span><kbd>Shift</kbd> run</span>
           <span><kbd>C</kbd> crouch</span>
           <span><kbd>L</kbd> room light · <kbd>L</kbd><kbd>L</kbd> whole floor</span>
+          <span><kbd>K</kbd> light scene: all / evening / night / off</span>
           <span><kbd>E</kbd> open/close door</span>
           <span><kbd>G</kbd> garage door design</span>
           <span>mouse — look</span>
