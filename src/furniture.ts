@@ -549,6 +549,32 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         block(r!, 0.8);
         break;
       }
+      case 'climbwall': {             // climbing wall on a wall: rect = [x0, wall plane y, x1, y + depth], panel faces +y, h = height of the panel
+        const [x0, y0, x1] = r!; const H = f.h ?? 3.6;
+        const ply = M(0xdcc79b, 0.85);
+        box(x0, y0, 0, x1, y0 + 0.06, H, anth);                                        // stud frame standing off the wall
+        box(x0, y0 + 0.06, 0, x1, y0 + 0.085, H, ply);                                 // plywood face
+        box(x0, y0 + 0.06, 0, x1, y0 + 0.09, 0.12, rubber);                            // kick board
+        const routes = [0xd8402f, 0x2f6fb3, 0xe3b72b, 0x3f9a58, 0x8a4fa8, 0xf0f0ec].map((c) => M(c, 0.55));
+        let seed = 31; const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+        const pitch = 0.22, nx = Math.floor((x1 - x0 - 0.2) / pitch), ny = Math.floor((H - 0.7) / pitch);
+        for (let i = 0; i <= nx; i++) for (let j = 0; j <= ny; j++) {
+          if (rnd() < 0.42) continue;                                                  // not every grid point carries a hold
+          const m = routes[(Math.floor(i / 3) + Math.floor(j / 5)) % routes.length];
+          const big = rnd() < 0.3, w = big ? 0.13 : 0.06 + rnd() * 0.04, hh = big ? 0.08 : 0.035 + rnd() * 0.03, d = big ? 0.09 : 0.04 + rnd() * 0.03;
+          const hx = x0 + 0.1 + i * pitch + (rnd() - 0.5) * 0.05, hz = 0.35 + j * pitch + (rnd() - 0.5) * 0.05;
+          box(hx - w / 2, y0 + 0.085, hz - hh / 2, hx + w / 2, y0 + 0.085 + d, hz + hh / 2, m);
+        }
+        box(x0 + 0.1, y0 + 0.085, H - 0.14, x1 - 0.1, y0 + 0.12, H - 0.1, steel);        // top-out bar
+        block([x0, y0, x1, y0 + 0.17], H);
+        break;
+      }
+      case 'crashmat': {              // thick crash pad in front of the climbing wall
+        const [x0, y0, x1, y1] = r!;
+        box(x0, y0, 0, x1, y1, 0.2, M(0x2c4a73, 0.92));
+        box(x0 + 0.03, y0 + 0.03, 0.2, x1 - 0.03, y1 - 0.03, 0.215, M(0x3b6aa0, 0.9));
+        break;
+      }
       case 'rug': {
         const [x0, y0, x1, y1] = r!;
         const m = box(x0, y0, 0.001, x1, y1, 0.012, rugMat); m.castShadow = false;

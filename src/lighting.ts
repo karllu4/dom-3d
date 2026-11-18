@@ -87,11 +87,22 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     if (mode === 0) return r;
     const flatCeil = (af ? af.ceilingHeight : 2.8);
     const floor = atticFloorAt(x, y);
-    const fin = Math.min(floor + flatCeil, r - dropV);
-    return mode === 1 ? fin + (af?.board ?? 0.025) * (fin < floor + flatCeil - 1e-3 ? s3 : 1) : fin;
+    const fin = finCeil(x, y, floor, r);
+    return mode === 1 ? fin + (af?.board ?? 0.025) * (Math.abs(fin - (floor + flatCeil)) > 1e-3 ? s3 : 1) : fin;
   };
   const atticFloors = (h.lighting ?? []).filter((l) => l.level !== 'parter');
   const atticRooms = h.levels.filter((lv) => lv.id !== 'parter').flatMap((lv) => lv.rooms);
+  // rising ceiling (e.g. 2/8): inside that room the finished ceiling follows its plane wherever that is higher than the flat ceiling
+  const rising = Object.entries(af?.risingCeiling ?? {}).flatMap(([rid, rc]) => {
+    const room = atticRooms.find((r) => r.labels.some((l) => l.id === rid));
+    return room ? [{ room, plane: rc.plane }] : [];
+  });
+  const finCeil = (x: number, y: number, floor: number, roofUnder: number) => {
+    const flat = floor + (af?.ceilingHeight ?? 2.8);
+    const q = rising.find((c) => pointInPoly(x, y, c.room));
+    const top = q ? Math.max(flat, q.plane[0] * x + q.plane[1] * y + q.plane[2] - dropV) : flat;
+    return Math.min(top, roofUnder - dropV);
+  };
   const atticFloorAt = (x: number, y: number) => {
     // the floor of the room the point lies in (a lamp near a room boundary must not take the neighbour's floor: it would hang below its ceiling)
     const inside = atticRooms.find((r) => pointInPoly(x, y, r));
@@ -110,16 +121,16 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     // one glow material per layer, so every layer dims on its own
     const glows: Partial<Record<Layer, THREE.MeshStandardMaterial>> = {};
     const glowOf = (layer: Layer) => (glows[layer] ??= Object.assign(glowMat(col), { userData: { layer } }));
+    const extraGlows: THREE.MeshStandardMaterial[] = [];
     const glow = glowOf('ambient');
     const lights: THREE.Light[] = [];
     // ceiling height at a plan point: ground floor ceiling; attic = finished ceiling (flat 2.80 or lined slope)
     const ceilAt = (x: number, y: number) => {
       if (L.ceilZ != null) return L.ceilZ;
-      const flat = L.floorZ + (af?.ceilingHeight ?? 2.8);
-      return Math.min(flat, roofH(x, y) - dropV);
+      return finCeil(x, y, L.floorZ, roofH(x, y));
     };
-    const addLight = (x: number, y: number, z: number, power: number, layer: Layer = 'ambient') => {
-      const pl = new THREE.PointLight(col, 0, 0, 2);
+    const addLight = (x: number, y: number, z: number, power: number, layer: Layer = 'ambient', color: THREE.Color = col) => {
+      const pl = new THREE.PointLight(color, 0, 0, 2);
       pl.position.set(x, z, y);
       pl.userData.power = power * gain;
       pl.userData.layer = layer;
@@ -225,16 +236,20 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     }
 
     // --- table / bedside lamps standing on furniture: linen drum shade on a slim base
-    for (const [x, y, z] of L.tableLamps ?? []) {
+    for (const [x, y, z, k] of L.tableLamps ?? []) {
+      // a desk lamp (given its own colour temperature k) is a task light in its own colour; bedside lamps stay warm accent lights
+      const lcol = k ? cctColor(k) : col, llayer: Layer = k ? 'task' : 'accent';
+      const lglow = k ? Object.assign(glowMat(lcol), { userData: { layer: llayer } }) : glowOf('accent');
+      if (k) extraGlows.push(lglow);
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.04, 20), black);
       base.position.set(x, z + 0.02, y);
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.28, 8), black);
       stem.position.set(x, z + 0.18, y);
-      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.18, 28, 1, true), glowOf('accent'));
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.18, 28, 1, true), lglow);
       shade.material.side = THREE.DoubleSide;
       shade.position.set(x, z + 0.36, y);
       g.add(base, stem, shade);
-      addLight(x, y, z + 0.36, 1.2, 'accent');
+      addLight(x, y, z + 0.36, 1.2, llayer, lcol);
     }
 
     // --- floor lamps (reading corner by the sofa): black round base, slim pole, linen drum shade at 1.5 m
@@ -344,7 +359,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     }
     if (L.cove.length) addLight(L.center[0], L.center[1], L.floorZ + (af?.ceilingHeight ?? 2.8) - 0.3, 2 + 0.15 * L.area, 'accent');
 
-    out.push({ id: L.id, level: L.level, lights, glows: Object.values(glows) as THREE.MeshStandardMaterial[], on: false, scene: 'off' });
+    out.push({ id: L.id, level: L.level, lights, glows: [...(Object.values(glows) as THREE.MeshStandardMaterial[]), ...extraGlows], on: false, scene: 'off' });
   }
   // ceiling cassette air conditioners: white panel with 4 outlet slots + corner outlets and a central intake grille,
   // the unit body sits above the ceiling (visible only while the attic ceiling is open)

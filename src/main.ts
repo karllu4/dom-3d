@@ -206,7 +206,7 @@ async function main() {
   // attic ceiling layer: 0 = off (as built today), 1 = insulation only, 2 = finished plasterboard
   let finishMode = 0;
   const baseRoofH = hs.world.roofH;
-  const setFinish = (m: number) => {
+  const setFinish = (m: number, quiet = false) => {
     finishMode = m;
     if (hs.finish) {
       hs.finish.wool.visible = m === 1; // finished: wool is behind the boards
@@ -219,7 +219,7 @@ async function main() {
     const b = $('t-finish');
     b.innerHTML = `Attic ceiling: ${['off', 'insulation', 'finished'][m]} <kbd>I</kbd>`;
     b.classList.toggle('on', m > 0);
-    showToast(['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m (2/8: rising towards the door, 30 cm wool)'][m], 3000);
+    if (!quiet) showToast(['Attic ceiling layer off (current state)', 'Attic: 15 cm wool between rafters + 15 cm under, 30 cm on the ceiling', 'Attic: double plasterboard, flat ceiling 2.80 m (2/8: rising towards the door, 30 cm wool)'][m], 3000);
   };
   const setPlan = (v: boolean) => {
     state.plan = v;
@@ -235,7 +235,7 @@ async function main() {
   // ---------- room lighting: L = room you stand in, double L = whole floor
   await stage(0.62, 'Installing the lighting…');
   const roomLights = buildLighting(house, hs.levels);
-  setAtticMount(0); // attic starts bare: fixtures hang from the rafters
+  if (hs.finish) setFinish(2, true); else setAtticMount(0);   // attic starts with the insulation + plasterboard ceiling (I cycles: off / insulation / finished)
   const toast = showToast;
   // ---------- tape measure: T on/off, click = point, Z undo, X clear, N vertex snap
   const tape = new TapeMeasure(scene, camera, hs.root, $('hud'));
