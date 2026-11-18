@@ -25,6 +25,13 @@ export const SCENE_NAMES: Record<Scene, string> = { full: 'all lights', evening:
 const SCENE_ORDER: Scene[] = ['full', 'evening', 'night', 'off'];
 export const nextScene = (s: Scene): Scene => SCENE_ORDER[(SCENE_ORDER.indexOf(s) + 1) % SCENE_ORDER.length];
 
+// Light budget: every real light costs every shader on every pixel (even at intensity 0), so ~85 fixtures froze Macs.
+// The fixtures stay as plain data holders; only the POOL_POINT + POOL_SPOT most relevant ones (nearest and brightest) are real scene lights.
+// The pool size is constant, so no shader ever recompiles when lights toggle or the player moves.
+const POOL_POINT = 14, POOL_SPOT = 8;
+const allLights: THREE.Light[] = [];
+let poolPoints: THREE.PointLight[] = [], poolSpots: THREE.SpotLight[] = [];
+
 const WARM = 0xffdcb0;   // the look of the default 3000 K
 /** Tint of a light of the given colour temperature, relative to the default 3000 K (Tanner Helland's blackbody approximation). */
 function kelvinRgb(k: number): [number, number, number] {
@@ -55,15 +62,35 @@ function strip(a: THREE.Vector3, b: THREE.Vector3, mat: THREE.Material, w = 0.02
 }
 
 /** Attic fixtures re-mount to whatever ceiling exists in the current attic view (bare rafters / wool / boards). */
-interface Mover { obj: THREE.Object3D; x: number; y: number; off: number; inst?: { mesh: THREE.InstancedMesh; i: number } }
+interface Mover { obj: THREE.Object3D; x: number; y: number; off: number; inst?: { mesh: THREE.InstancedMesh; i: number }; tilt?: boolean; target?: THREE.Object3D }
 const movers: Mover[] = [];
 let mountAt: (x: number, y: number, mode: number) => number = () => 0;
 
+const UP = new THREE.Vector3(0, 1, 0);
+/** Upward normal of the attic ceiling surface at a plan point (numerical gradient of the mount height), so fixtures can sit flush on a slope. */
+function ceilingNormal(x: number, y: number, mode: number, out: THREE.Vector3): THREE.Vector3 {
+  const e = 0.06;
+  const fx = (mountAt(x + e, y, mode) - mountAt(x - e, y, mode)) / (2 * e);
+  const fy = (mountAt(x, y + e, mode) - mountAt(x, y - e, mode)) / (2 * e);
+  return out.set(-fx, 1, -fy).normalize();
+}
+
 export function setAtticMount(mode: number) {
-  const m = new THREE.Matrix4();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), n = new THREE.Vector3(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const touched = new Set<THREE.InstancedMesh>();
   for (const mv of movers) {
-    const z = mountAt(mv.x, mv.y, mode) + mv.off;
+    const surf = mountAt(mv.x, mv.y, mode);
+    if (mv.tilt) {
+      // flush on the ceiling: tilt the fixture with the slope; its offset runs along the surface normal, the beam leaves perpendicular to the slope
+      ceilingNormal(mv.x, mv.y, mode, n);
+      q.setFromUnitVectors(UP, n);
+      p.set(mv.x, surf, mv.y).addScaledVector(n, mv.off);
+      if (mv.inst) { m.compose(p, q, one); mv.inst.mesh.setMatrixAt(mv.inst.i, m); touched.add(mv.inst.mesh); }
+      else { mv.obj.position.copy(p); mv.obj.quaternion.copy(q); }
+      if (mv.target) mv.target.position.copy(p).addScaledVector(n, -3);
+      continue;
+    }
+    const z = surf + mv.off;
     if (mv.inst) { m.makeTranslation(mv.x, z, mv.y); mv.inst.mesh.setMatrixAt(mv.inst.i, m); touched.add(mv.inst.mesh); }
     else mv.obj.position.y = z;
   }
@@ -115,7 +142,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   for (const L of h.lighting ?? []) {
     const g = levels[L.level];
     const attic = L.level !== 'parter';
-    const track = (obj: THREE.Object3D, x: number, y: number) => { if (attic) movers.push({ obj, x, y, off: obj.position.y - ceilAt(x, y) }); };
+    const track = (obj: THREE.Object3D, x: number, y: number, tilt = false, target?: THREE.Object3D) => { if (attic) movers.push({ obj, x, y, off: obj.position.y - ceilAt(x, y), tilt, target }); };
     const col = cctColor(L.cct ?? 3000);
     const gain = L.gain ?? 1;
     // one glow material per layer, so every layer dims on its own
@@ -134,8 +161,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       pl.position.set(x, z, y);
       pl.userData.power = power * gain;
       pl.userData.layer = layer;
-      g.add(pl);
-      lights.push(pl);
+      lights.push(pl); allLights.push(pl);   // data holder only: not in the scene, the pool lights copy it when it matters
       track(pl, x, y);
     };
     // recessed downlights shine down only: a wide cone from just under the ceiling, so the ceiling itself stays unlit
@@ -145,9 +171,8 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       sl.target.position.set(x, z - 3, y);
       sl.userData.power = power * gain;
       sl.userData.layer = 'ambient';
-      g.add(sl, sl.target);
-      lights.push(sl);
-      track(sl, x, y);
+      lights.push(sl); allLights.push(sl);
+      track(sl, x, y, true, sl.target);
     };
 
     // --- recessed downlights (only where the ceiling is at least 2.2 m above the floor)
@@ -161,8 +186,8 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         m.makeTranslation(x, z - 0.004, y); rings.setMatrixAt(i, m);
         m.makeTranslation(x, z - 0.008, y); lenses.setMatrixAt(i, m);
         if (attic) {
-          movers.push({ obj: rings, x, y, off: -0.004, inst: { mesh: rings, i } });
-          movers.push({ obj: lenses, x, y, off: -0.008, inst: { mesh: lenses, i } });
+          movers.push({ obj: rings, x, y, off: -0.004, inst: { mesh: rings, i }, tilt: true });
+          movers.push({ obj: lenses, x, y, off: -0.008, inst: { mesh: lenses, i }, tilt: true });
         }
       });
       g.add(rings, lenses);
@@ -188,7 +213,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.01, 40), glow);
       diffuser.position.set(x, z - 0.092, y);
       g.add(body, rim, diffuser);
-      for (const o of [body, rim, diffuser]) track(o, x, y);
+      for (const o of [body, rim, diffuser]) track(o, x, y, true);
       addLight(x, y, z - 0.3, (6 + 0.6 * L.area) / (L.lamps?.length ?? 1));
     }
 
@@ -203,7 +228,25 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     }
 
     // --- pendants over the dining table: black shade on a thin cable
-    if (L.pendants?.length) {
+    if (L.pendants?.length && L.pendantStyle === 'orb') {
+      // modern hanging lamps: opal glass globe on a thin black cable and a flat canopy; glows evenly in all directions
+      const R = 0.18;
+      for (const [x, y] of L.pendants) {
+        const zTop = L.pendantTopZ ?? ceilAt(x, y);
+        const zc = L.floorZ + (L.pendantBottom ?? 1.95) + R;                       // globe centre
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, zTop - (zc + R), 6), black);
+        cable.position.set(x, zTop - (zTop - (zc + R)) / 2, y);
+        const globe = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 20), glowOf('ambient'));
+        globe.position.set(x, zc, y);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 16), black);
+        cap.position.set(x, zc + R + 0.015, y);
+        const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 24), black);
+        canopy.position.set(x, zTop - 0.01, y);
+        g.add(cable, globe, cap, canopy);
+        for (const o of [cable, globe, cap, canopy]) track(o, x, y);
+        addLight(x, y, zc, 5);                                                      // one light per globe
+      }
+    } else if (L.pendants?.length) {
       for (const [x, y] of L.pendants) {
         const z = L.pendantTopZ ?? ceilAt(x, y);   // e.g. hung from the underside of a beam
         const drop = L.pendantBottom != null ? z - L.floorZ - L.pendantBottom - 0.14 : (L.pendantDrop ?? 0.8);
@@ -231,7 +274,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       const lens = new THREE.Mesh(lensGeo, glow);
       lens.position.set(x, z - 0.106, y);
       g.add(body, lens);
-      track(body, x, y); track(lens, x, y);
+      track(body, x, y, true); track(lens, x, y, true);
       addSpot(x, y, z - 0.11, SPOT);
     }
 
@@ -267,7 +310,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
 
     // --- wall sconces (e.g. above a bed headboard): wall plate, short arm, linen cylinder shade.
     //     [x, y, z, dir]: point on the wall face, absolute height, dir = degrees of the outward normal (0 = +y, 90 = +x)
-    for (const [x, y, z, dir, layer = 'accent'] of L.wallLamps ?? []) {
+    for (const [x, y, z, dir, layer = 'accent', mode] of L.wallLamps ?? []) {
       const wl = layer as Layer;
       const nx = Math.sin(THREE.MathUtils.degToRad(dir)), ny = Math.cos(THREE.MathUtils.degToRad(dir));
       const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.015, 20), black);
@@ -280,7 +323,16 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       shade.material.side = THREE.DoubleSide;
       shade.position.set(x + nx * 0.16, z, y + ny * 0.16);
       g.add(plate, arm, shade);
-      addLight(x + nx * 0.16, y + ny * 0.16, z, 1.2, wl);
+      if (mode === 'ud') {
+        // up/down sconce: one beam up and one down along the wall (wall washing), instead of an all-round glow
+        for (const dz of [1, -1]) {
+          const sl = new THREE.SpotLight(col, 0, 0, THREE.MathUtils.degToRad(48), 0.85, 2);
+          sl.position.set(x + nx * 0.16, z + dz * 0.08, y + ny * 0.16);
+          sl.target.position.set(x + nx * 0.03, z + dz * 2.2, y + ny * 0.03);
+          sl.userData.power = 1.8 * gain; sl.userData.layer = wl;
+          lights.push(sl); allLights.push(sl);
+        }
+      } else addLight(x + nx * 0.16, y + ny * 0.16, z, 1.2, wl);
     }
 
     // --- linear pendant over the dining table: black bar with opal underside on two cables
@@ -390,7 +442,36 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     }
     if (attic) for (const m of parts) movers.push({ obj: m, x, y, off: m.position.y - ceil });
   }
+  // the real lights (constant count, parked at intensity 0 until updateLightPool assigns them)
+  const root = levels.parter.parent ?? levels.parter;
+  poolPoints = Array.from({ length: POOL_POINT }, () => { const l = new THREE.PointLight(WARM, 0, 0, 2); root.add(l); return l; });
+  poolSpots = Array.from({ length: POOL_SPOT }, () => {
+    const l = new THREE.SpotLight(WARM, 0, 0, THREE.MathUtils.degToRad(62), 0.75, 2); root.add(l, l.target); return l;
+  });
   return out;
+}
+
+/** Assign the real lights to the fixtures that matter most for the viewer (brightness / squared distance). Call every frame. */
+const scored: { score: number; l: THREE.Light }[] = [];
+export function updateLightPool(focus: THREE.Vector3) {
+  scored.length = 0;
+  for (const l of allLights) if (l.intensity > 0) scored.push({ score: l.intensity / (0.6 + l.position.distanceToSquared(focus)), l });
+  scored.sort((a, b) => b.score - a.score);
+  let pi = 0, si = 0;
+  for (const { l } of scored) {
+    if ((l as THREE.SpotLight).isSpotLight) {
+      if (si >= poolSpots.length) continue;
+      const t = poolSpots[si++], src = l as THREE.SpotLight;
+      t.position.copy(src.position); t.target.position.copy(src.target.position); t.color.copy(src.color); t.intensity = src.intensity;
+    } else {
+      if (pi >= poolPoints.length) continue;
+      const t = poolPoints[pi++];
+      t.position.copy(l.position); t.color.copy(l.color); t.intensity = l.intensity;
+    }
+    if (pi >= poolPoints.length && si >= poolSpots.length) break;
+  }
+  for (; pi < poolPoints.length; pi++) poolPoints[pi].intensity = 0;
+  for (; si < poolSpots.length; si++) poolSpots[si].intensity = 0;
 }
 
 export function setScene(r: RoomLight, scene: Scene) {

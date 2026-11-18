@@ -12,9 +12,10 @@ import { buildHouse } from './house';
 import { Player } from './player';
 import { Minimap, roomAt, levelForFeet } from './hud';
 import { sunPosition, bearingToWorld } from './sun';
-import { buildLighting, setLight, setScene, nextScene, SCENE_NAMES, setAtticMount } from './lighting';
+import { buildLighting, setLight, setScene, nextScene, SCENE_NAMES, setAtticMount, updateLightPool } from './lighting';
 import { buildFurniture } from './furniture';
 import { TapeMeasure } from './measure';
+import { isTouch, initTouch } from './touch';
 
 const compass = (b: number) => ['N','NE','E','SE','S','SW','W','NW'][Math.round(((b % 360) + 360) % 360 / 45) % 8];
 
@@ -56,7 +57,7 @@ async function main() {
 
   // ---------- renderer / scene
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // AO + MSAA at full retina resolution costs too many frames
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5));   // AO + MSAA at full retina resolution costs too many frames
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -69,8 +70,8 @@ async function main() {
 
   // ---------- post-processing ("photo" quality, Q toggles): scene -> ambient occlusion -> AgX + sRGB.
   // The scene is rendered into its own MSAA target so the AO uses the real depth (incl. roof-clipped attic walls).
-  const quality = { high: true };
-  const sceneRT = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+  const quality = { high: !isTouch };   // phones: no ambient occlusion by default (battery / frame rate)
+  const sceneRT = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: isTouch ? 0 : 4 });
   sceneRT.depthTexture = new THREE.DepthTexture(innerWidth, innerHeight);
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType }));
   composer.addPass(new TexturePass(sceneRT.texture));
@@ -105,7 +106,7 @@ async function main() {
   sun.position.copy(center).addScaledVector(sunDir, 30);
   sun.target.position.copy(center);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(isTouch ? 2048 : 4096, isTouch ? 2048 : 4096);
   const sc = sun.shadow.camera;
   sc.left = -14; sc.right = 14; sc.top = 14; sc.bottom = -14; sc.near = 5; sc.far = 70;
   sun.shadow.bias = -0.0004;
@@ -183,6 +184,14 @@ async function main() {
   // ---------- UI
   const minimap = new Minimap($('hud'));
   const menu = $('menu');
+  // on phones there is no pointer lock: walking starts with the menu closing, and the Menu button reopens it
+  const walkIn = () => {
+    if (!isTouch) { player.controls.lock(); return; }
+    menu.classList.add('hidden'); player.touch.active = true;
+    try { void document.documentElement.requestFullscreen?.(); } catch { /* iOS Safari has none */ }
+  };
+  new MutationObserver(() => document.body.classList.toggle('menu-open', !menu.classList.contains('hidden'))).observe(menu, { attributes: true, attributeFilter: ['class'] });
+  document.body.classList.add('menu-open');
   const roomList = $('rooms');
   for (const lv of house.levels) {
     const h = document.createElement('h3');
@@ -196,7 +205,7 @@ async function main() {
       b.onclick = () => {
         if (overview) toggleOverview();
         player.teleport(l.at[0], l.at[1], r.floorZ + 0.05);
-        player.controls.lock();
+        walkIn();
       };
       wrap.appendChild(b);
     }
@@ -300,6 +309,7 @@ async function main() {
       setUpper(true);
       if (saved) { camera.position.copy(saved.pos); camera.quaternion.copy(saved.quat); }
     }
+    if (isTouch) { menu.classList.add('hidden'); player.touch.active = !overview; }
     setPlan(state.plan);
     document.body.classList.toggle('overview', overview);
     syncToggles();
@@ -341,11 +351,11 @@ async function main() {
 
   $('start').onclick = () => {
     if (overview) toggleOverview();
-    player.controls.lock();
+    walkIn();
   };
   player.controls.addEventListener('lock', () => { menu.classList.add('hidden'); });
   player.controls.addEventListener('unlock', () => { if (!overview) menu.classList.remove('hidden'); });
-  renderer.domElement.addEventListener('click', () => { if (!overview && !player.controls.isLocked) player.controls.lock(); });
+  renderer.domElement.addEventListener('click', () => { if (!isTouch && !overview && !player.controls.isLocked) player.controls.lock(); });
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
@@ -368,12 +378,25 @@ async function main() {
     return best;
   };
 
+  if (isTouch) {
+    $('start').textContent = 'Tap to walk in';
+    $('t-measure').style.display = 'none';
+    document.querySelector('.help')!.innerHTML = '<span>Left stick — walk (push to the rim to run)</span><span>Drag the view — look around</span><span>Buttons: Door · Light (double tap = whole floor) · Scene · Crouch · Menu</span>';
+    initTouch(player, renderer.domElement, {
+      door: () => nearestDoor()?.toggle(),
+      light: pressL,
+      scene: cycleRoomScene,
+      menu: () => { player.touch.active = false; player.touch.x = player.touch.y = 0; menu.classList.remove('hidden'); },
+    }, () => player.touch.active && !overview);
+  }
+
   // ---------- wait for textures, compile shaders, draw one hidden frame, then reveal
   await stage(0.68, 'Loading textures…');
   while (tex.total > tex.loaded) {
     progress(0.68 + 0.22 * (tex.loaded / Math.max(1, tex.total)), `Loading textures ${tex.loaded}/${tex.total}…`);
     await new Promise((r) => setTimeout(r, 80));
   }
+  updateLightPool(camera.position);
   await stage(0.92, 'Compiling shaders…');
   try { await renderer.compileAsync(scene, camera); } catch { /* the first real frame compiles them anyway */ }
   await stage(0.97, 'Preparing the first frame…');
@@ -404,12 +427,13 @@ async function main() {
       if (level.id !== lastLevel) { lastLevel = level.id; setPlan(state.plan); }
       const near = nearestDoor();
       const hint = $('hint');
-      hint.textContent = near ? `E — ${near.open ? 'close' : 'open'} door · ${near.label}${near === hs.garage ? '  ·  G — next design' : ''}` : '';
+      hint.textContent = near ? `${isTouch ? 'Door button' : 'E'} — ${near.open ? 'close' : 'open'} door · ${near.label}${near === hs.garage ? '  ·  G — next design' : ''}` : '';
       hint.classList.toggle('hidden', !near);
       minimap.draw(level, player.pos.x, player.pos.y, player.yaw(), label?.id ?? null, site.planDownBearingDeg);
       $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}`;
     }
     tape.update(innerWidth, innerHeight, snap);
+    updateLightPool(overview ? orbit.target : camera.position);
     if (quality.high) {
       renderer.setRenderTarget(sceneRT);
       renderer.render(scene, camera);
