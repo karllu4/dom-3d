@@ -45,6 +45,19 @@ export class World {
     return best;
   }
 
+  /** Height of the floor surface right below a point (x, y, z): the highest floor / ground / stair top at or below z. */
+  floorBelow(x: number, y: number, z: number, withGround = false): number | null {
+    let best = -Infinity;
+    for (const s of this.solids) {
+      if (s.off || s.z1 > z + 0.01 || s.z1 <= best) continue;
+      if (s.tag !== 'floor' && s.tag !== 'terrace' && s.tag !== 'stair' && !(withGround && s.tag === 'ground')) continue;
+      const [x0, y0, x1, y1] = s.bbox;
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      if (pointInRing(x, y, s.ring)) best = s.z1;
+    }
+    return Number.isFinite(best) ? best : null;
+  }
+
   /** Push a circle (x, y, r) out of blocking solids for a body spanning feet..feet+height. */
   resolve(pos: { x: number; y: number }, r: number, feet: number, height: number): void {
     for (let iter = 0; iter < 3; iter++) {

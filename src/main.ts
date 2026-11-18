@@ -262,10 +262,10 @@ async function main() {
   const tape = new TapeMeasure(scene, camera, hs.root, $('hud'));
   let snap = true;
   const tapeStatus = () => {
-    $('measure-status').textContent = tape.active ? `Measure · click 2 points · W nearest wall · H floor · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
+    $('measure-status').textContent = tape.active ? `Measure · click 2 points · 1 floor · 2 nearest wall · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
     $('measure-status').classList.toggle('hidden', !tape.active);
   };
-  const toggleTape = () => { tape.toggle(); player.blockW = tape.active; $('t-measure').classList.toggle('on', tape.active); tapeStatus(); };
+  const toggleTape = () => { tape.toggle(); $('t-measure').classList.toggle('on', tape.active); tapeStatus(); };
   document.addEventListener('mousedown', (e) => {
     if (e.button === 0 && tape.active && player.controls.isLocked && !overview) {
       const d = tape.click();
@@ -301,7 +301,23 @@ async function main() {
     if (lTimer) { clearTimeout(lTimer); lTimer = null; toggleFloorLights(); return; }   // second press = double L
     lTimer = setTimeout(() => { lTimer = null; toggleRoomLight(); }, 320);
   };
+  // overview: roof / attic buttons and "strip to base level" (roof + attic + ground-floor ceilings off, looking straight into the ground floor)
+  const syncOverviewTools = () => {
+    $('ov-roof').classList.toggle('on', state.roof);
+    $('ov-attic').classList.toggle('on', state.upper);
+    const stripped = !state.roof && !state.upper;
+    $('ov-base').classList.toggle('on', stripped);
+    $('ov-base').innerHTML = stripped ? 'Build back up <kbd>B</kbd>' : 'Strip to base level <kbd>B</kbd>';
+  };
+  const stripToBase = () => {
+    const stripped = !state.roof && !state.upper;
+    setRoof(stripped); setUpper(stripped);
+    // restored: the roof stays off in overview (it hides the attic), only the attic comes back
+    if (stripped && overview) setRoof(false);
+    syncToggles();
+  };
   const syncToggles = () => {
+    syncOverviewTools();
     for (const [k, v] of Object.entries(state)) $(`t-${k}`)?.classList.toggle('on', v);
     $('t-overview').classList.toggle('on', overview);
   };
@@ -337,12 +353,16 @@ async function main() {
     furniture: () => { furniture.visible = !furniture.visible; for (const s of hs.world.solids) if (s.tag === 'furniture') s.off = !furniture.visible; $('t-furniture').classList.toggle('on', furniture.visible); },
   };
   $('t-measure').onclick = () => toggleTape();
+  $('ov-roof').onclick = () => { setRoof(!state.roof); syncToggles(); };
+  $('ov-attic').onclick = () => { setUpper(!state.upper); syncToggles(); };
+  $('ov-base').onclick = stripToBase;
   for (const k of Object.keys(actions)) $(`t-${k}`).onclick = () => { actions[k](); syncToggles(); };
   addEventListener('keydown', (e) => {
     const map: Record<string, string> = { KeyP: 'plan', KeyR: 'roof', KeyU: 'upper', KeyO: 'overview', KeyI: 'finish', KeyF: 'furniture' };
     const a = map[e.code];
     if (a) { actions[a](); syncToggles(); }
     if (e.code === 'KeyM') $('minimap').classList.toggle('hidden');
+    if (e.code === 'KeyB' && overview) stripToBase();
     if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') && !e.repeat) stepTime(0.5);
     if ((e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') && !e.repeat) stepTime(-0.5);
     if (e.code === 'KeyL' && !e.repeat) pressL();
@@ -353,10 +373,11 @@ async function main() {
     }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
-    if (tape.active && !e.repeat && (e.code === 'KeyW' || e.code === 'KeyH')) {
-      // from the selected point (first click, else the crosshair): W = nearest wall, H = straight down to the floor
-      const d = e.code === 'KeyW' ? tape.toWall(hs.world) : tape.toFloor();
-      toast(d === null ? (e.code === 'KeyW' ? 'No wall found at that height' : 'Nothing below that point') : `${e.code === 'KeyW' ? 'To nearest wall' : 'To floor'}: ${(d * 100).toFixed(1)} cm`);
+    if (tape.active && !e.repeat && (e.code === 'Digit1' || e.code === 'Numpad1' || e.code === 'Digit2' || e.code === 'Numpad2')) {
+      // from the selected point (first click, else the crosshair): 1 = shortest distance to the floor, 2 = to the nearest wall
+      const floor = e.code.endsWith('1');
+      const d = floor ? tape.toFloor(hs.world) : tape.toWall(hs.world);
+      toast(d === null ? (floor ? 'No floor below that point' : 'No wall found') : `${floor ? 'To floor' : 'To nearest wall'}: ${(d * 100).toFixed(1)} cm`);
     }
     if (tape.active && (e.code === 'KeyZ' || e.code === 'Backspace')) tape.undo();
     if (e.code === 'KeyX' && tape.count) { tape.clear(); toast('Measurements cleared'); }

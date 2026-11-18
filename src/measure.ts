@@ -110,39 +110,44 @@ export class TapeMeasure {
   /** The selected point: the pending start point, else the point under the crosshair. */
   private selected() { return this.start ?? this.hit; }
 
-  /** Distance from the selected point to the nearest wall (horizontal, at the point's height). Returns metres or null. */
+  /** Shortest distance from the selected point to the nearest wall (3D: a wall piece is a vertical prism). Returns metres or null. */
   toWall(world: World): number | null {
     const p = this.selected();
     if (!this.active || !p) return null;
-    let best = Infinity, bx = 0, by = 0;
+    let best = Infinity, bx = 0, by = 0, bz = 0;
     for (const s of world.solids) {
-      if (s.tag !== 'wall' || s.off || p.y < s.z0 - 0.02 || p.y > s.z1 + 0.02) continue;
+      if (s.tag !== 'wall' || s.off) continue;
+      const dz = Math.max(s.z0 - p.y, 0, p.y - s.z1);                      // vertical gap to this wall piece
+      if (dz >= best) continue;
       const [x0, y0, x1, y1] = s.bbox;
       if (p.x < x0 - best || p.x > x1 + best || p.z < y0 - best || p.z > y1 + best) continue;   // cannot beat the best so far
-      if (pointInRing(p.x, p.z, s.ring)) continue;                      // standing inside a wall piece: not a wall face to measure to
+      if (pointInRing(p.x, p.z, s.ring)) continue;                          // standing inside a wall piece: not a wall face
       const r = s.ring;
       for (let i = 0; i < r.length; i++) {
         const [ax, ay] = r[i], [cx, cy] = r[(i + 1) % r.length];
         const ex = cx - ax, ey = cy - ay;
         const t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - ay) * ey) / (ex * ex + ey * ey || 1)));
-        const qx = ax + ex * t, qy = ay + ey * t, d = Math.hypot(p.x - qx, p.z - qy);
-        if (d < best) { best = d; bx = qx; by = qy; }
+        const qx = ax + ex * t, qy = ay + ey * t, d = Math.hypot(Math.hypot(p.x - qx, p.z - qy), dz);
+        if (d < best) { best = d; bx = qx; by = qy; bz = Math.min(Math.max(p.y, s.z0), s.z1); }
       }
     }
     if (!Number.isFinite(best)) return null;
-    return this.commit(p.clone(), new THREE.Vector3(bx, p.y, by));
+    return this.commit(p.clone(), new THREE.Vector3(bx, bz, by));
   }
 
-  /** Distance from the selected point straight down to the floor (or whatever surface is below). Returns metres or null. */
-  toFloor(): number | null {
+  /** Shortest distance from the selected point to the floor below it (straight down to the floor surface, not to furniture). Metres or null. */
+  toFloor(world: World): number | null {
     const p = this.selected();
     if (!this.active || !p) return null;
-    this.ray.set(p.clone().add(new THREE.Vector3(0, 0.002, 0)), new THREE.Vector3(0, -1, 0));
-    this.ray.far = 30;
-    const hits = this.ray.intersectObject(this.targets, true);
-    const h = hits.find((x) => (x.object as THREE.Mesh).isMesh && visibleChain(x.object) && !this.group.getObjectById(x.object.id) && ((x.object as THREE.Mesh).material as THREE.Material | undefined)?.visible !== false);
-    if (!h) return null;
-    return this.commit(p.clone(), new THREE.Vector3(p.x, h.point.y, p.z));
+    // a point on a wall face sits on the edge of the room-floor polygons: also look a few cm to the sides; bare ground only as a last resort
+    let fz: number | null = null;
+    for (const [ox, oz] of [[0, 0], [0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05], [0.15, 0], [-0.15, 0], [0, 0.15], [0, -0.15], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]]) {
+      fz = world.floorBelow(p.x + ox, p.z + oz, p.y);
+      if (fz !== null) break;
+    }
+    fz ??= world.floorBelow(p.x, p.z, p.y, true);
+    if (fz === null) return null;
+    return this.commit(p.clone(), new THREE.Vector3(p.x, fz, p.z));
   }
 
   private text(a: THREE.Vector3, b: THREE.Vector3) {
