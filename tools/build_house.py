@@ -646,6 +646,21 @@ def main():
                                     if isinstance(e, LineString) and e.length > 0.4:
                                         cs = list(e.simplify(0.02).coords)
                                         cove.append([[round(a, 3), round(b, 3)] for a, b in cs])
+                    # coveExclude [[x0,y0,x1,y1]]: drop cove segments whose midpoint lies in one of these rectangles
+                    if rc.get('coveExclude'):
+                        kept = []
+                        for line in cove:
+                            cur = []
+                            for p0, p1 in zip(line, line[1:]):
+                                mx_, my_ = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
+                                if any(r_[0] <= mx_ <= r_[2] and r_[1] <= my_ <= r_[3] for r_ in rc['coveExclude']):
+                                    if len(cur) > 1: kept.append(cur)
+                                    cur = []
+                                else:
+                                    if not cur: cur = [p0]
+                                    cur.append(p1)
+                            if len(cur) > 1: kept.append(cur)
+                        cove = kept
                     if 'wallStrip' in rc:
                         # snap the strip onto the nearest wall face of this room (1 cm off the plaster)
                         x0_, y0_, x1_, y1_, zs = rc['wallStrip']
@@ -669,7 +684,7 @@ def main():
                     labels_out.append({'id': lab['id'], 'level': L['id'], 'floorZ': rm['floorZ'], 'ceilZ': rm['ceilZ'],
                                        'area': lab['area'], 'center': [round(region.centroid.x, 3), round(region.centroid.y, 3)],
                                        **rc_out, 'cove': cove,
-                                       **{k_: rc[k_] for k_ in ('surfaceSpots', 'pendants', 'pendantDrop', 'pendantBottom', 'pendantTopZ', 'tableLamps', 'wallLamps', 'floorLamps', 'lowLights', 'linearPendant', 'beamStrip', 'stairLights', 'wallStrip', 'strips', 'cct', 'gain', 'pendantStyle') if k_ in rc}})
+                                       **{k_: rc[k_] for k_ in ('surfaceSpots', 'pendants', 'pendantDrop', 'pendantBottom', 'pendantTopZ', 'tableLamps', 'wallLamps', 'floorLamps', 'lowLights', 'linearPendant', 'beamStrip', 'stairLights', 'wallStrip', 'strips', 'cct', 'gain', 'pendantStyle', 'pendantRadius', 'pendantPower', 'barLamps') if k_ in rc}})
         out['lighting'] = labels_out
         print(f"[light] {sum(len(l.get('lamps', [])) for l in labels_out)} ceiling lamps, {sum(len(l.get('downlights', [])) for l in labels_out)} downlights, {sum(len(l.get('battens', [])) for l in labels_out)} battens, {sum(len(l['cove']) for l in labels_out)} cove lines")
     print(f"[roof] {len(out['roof']['faces'])} faces")

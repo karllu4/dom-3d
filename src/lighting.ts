@@ -103,6 +103,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   const dropV = af ? (af.woolUnder + af.board) * Math.sqrt(1 + h.roof.k * h.roof.k) : 0;
   const trim = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
   const black = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.4, metalness: 0.4 });
+  const oakTone = new THREE.MeshStandardMaterial({ color: 0xc9a27c, roughness: 0.7 });
   const arcus = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.75, metalness: 0.1, flatShading: true });   // matte black, fluted look from the facets
   const ringGeo = new THREE.CylinderGeometry(0.048, 0.048, 0.008, 24);
   const lensGeo = new THREE.CylinderGeometry(0.032, 0.026, 0.012, 20);
@@ -230,7 +231,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     // --- pendants over the dining table: black shade on a thin cable
     if (L.pendants?.length && L.pendantStyle === 'orb') {
       // modern hanging lamps: opal glass globe on a thin black cable and a flat canopy; glows evenly in all directions
-      const R = 0.18;
+      const R = L.pendantRadius ?? 0.18;
       for (const [x, y] of L.pendants) {
         const zTop = L.pendantTopZ ?? ceilAt(x, y);
         const zc = L.floorZ + (L.pendantBottom ?? 1.95) + R;                       // globe centre
@@ -244,7 +245,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         canopy.position.set(x, zTop - 0.01, y);
         g.add(cable, globe, cap, canopy);
         for (const o of [cable, globe, cap, canopy]) track(o, x, y);
-        addLight(x, y, zc, 5);                                                      // one light per globe
+        addLight(x, y, zc, L.pendantPower ?? 5);                                    // one light per globe
       }
     } else if (L.pendants?.length) {
       for (const [x, y] of L.pendants) {
@@ -276,6 +277,28 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
       g.add(body, lens);
       track(body, x, y, true); track(lens, x, y, true);
       addSpot(x, y, z - 0.11, SPOT);
+    }
+
+    // --- rectangular 3-spot ceiling lamp (black bar on a wooden backplate, three adjustable heads): surface mounted
+    for (const b of L.barLamps ?? []) {
+      const [x, y] = b.at, len = b.len, alongY = (b.axis ?? 'y') === 'y';
+      const z = ceilAt(x, y);
+      const sz = (l: number, w: number, hgt: number) => alongY ? new THREE.BoxGeometry(w, hgt, l) : new THREE.BoxGeometry(l, hgt, w);
+      const plate = new THREE.Mesh(sz(len + 0.06, 0.15, 0.02), oakTone); plate.position.set(x, z - 0.01, y);
+      const bar = new THREE.Mesh(sz(len, 0.07, 0.045), black); bar.position.set(x, z - 0.0425, y);
+      g.add(plate, bar); track(plate, x, y, true); track(bar, x, y, true);
+      for (const t of [-1, 0, 1]) {
+        const hx = alongY ? x : x + t * len * 0.36, hy = alongY ? y + t * len * 0.36 : y;
+        const head = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.1, 20), black); head.position.set(hx, z - 0.115, hy);
+        const lens = new THREE.Mesh(lensGeo, glowOf('ambient')); lens.position.set(hx, z - 0.171, hy);
+        g.add(head, lens); track(head, hx, hy, true); track(lens, hx, hy, true);
+        // the outer heads are swivelled slightly outwards, the middle one points straight down
+        const sl = new THREE.SpotLight(col, 0, 0, THREE.MathUtils.degToRad(42), 0.7, 2);
+        sl.position.set(hx, z - 0.17, hy);
+        sl.target.position.set(alongY ? hx : hx + t * 0.9, z - 3, alongY ? hy + t * 0.9 : hy);
+        sl.userData.power = SPOT * 1.3 * gain; sl.userData.layer = 'ambient';
+        lights.push(sl); allLights.push(sl);
+      }
     }
 
     // --- table / bedside lamps standing on furniture: linen drum shade on a slim base
