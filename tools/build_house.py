@@ -684,7 +684,7 @@ def main():
                     labels_out.append({'id': lab['id'], 'level': L['id'], 'floorZ': rm['floorZ'], 'ceilZ': rm['ceilZ'],
                                        'area': lab['area'], 'center': [round(region.centroid.x, 3), round(region.centroid.y, 3)],
                                        **rc_out, 'cove': cove,
-                                       **{k_: rc[k_] for k_ in ('surfaceSpots', 'pendants', 'pendantDrop', 'pendantBottom', 'pendantTopZ', 'tableLamps', 'wallLamps', 'floorLamps', 'lowLights', 'linearPendant', 'beamStrip', 'stairLights', 'wallStrip', 'strips', 'cct', 'gain', 'pendantStyle', 'pendantRadius', 'pendantPower', 'barLamps') if k_ in rc}})
+                                       **{k_: rc[k_] for k_ in ('surfaceSpots', 'pendants', 'pendantDrop', 'pendantBottom', 'pendantTopZ', 'tableLamps', 'wallLamps', 'floorLamps', 'lowLights', 'linearPendant', 'beamStrip', 'stairLights', 'wallStrip', 'strips', 'cct', 'gain', 'adjustableAt', 'pendantStyle', 'pendantRadius', 'pendantPower', 'barLamps') if k_ in rc}})
         out['lighting'] = labels_out
         print(f"[light] {sum(len(l.get('lamps', [])) for l in labels_out)} ceiling lamps, {sum(len(l.get('downlights', [])) for l in labels_out)} downlights, {sum(len(l.get('battens', [])) for l in labels_out)} battens, {sum(len(l['cove']) for l in labels_out)} cove lines")
     print(f"[roof] {len(out['roof']['faces'])} faces")

@@ -62,7 +62,7 @@ function strip(a: THREE.Vector3, b: THREE.Vector3, mat: THREE.Material, w = 0.02
 }
 
 /** Attic fixtures re-mount to whatever ceiling exists in the current attic view (bare rafters / wool / boards). */
-interface Mover { obj: THREE.Object3D; x: number; y: number; off: number; inst?: { mesh: THREE.InstancedMesh; i: number }; tilt?: boolean; target?: THREE.Object3D }
+interface Mover { obj: THREE.Object3D; x: number; y: number; off: number; inst?: { mesh: THREE.InstancedMesh; i: number }; tilt?: boolean; target?: THREE.Object3D; aim?: THREE.Vector3 }
 const movers: Mover[] = [];
 let mountAt: (x: number, y: number, mode: number) => number = () => 0;
 
@@ -87,7 +87,7 @@ export function setAtticMount(mode: number) {
       p.set(mv.x, surf, mv.y).addScaledVector(n, mv.off);
       if (mv.inst) { m.compose(p, q, one); mv.inst.mesh.setMatrixAt(mv.inst.i, m); touched.add(mv.inst.mesh); }
       else { mv.obj.position.copy(p); mv.obj.quaternion.copy(q); }
-      if (mv.target) mv.target.position.copy(p).addScaledVector(n, -3);
+      if (mv.target) { mv.target.position.copy(p).addScaledVector(n, -3); if (mv.aim) mv.target.position.add(mv.aim); }
       continue;
     }
     const z = surf + mv.off;
@@ -104,6 +104,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   const trim = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
   const black = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.4, metalness: 0.4 });
   const oakTone = new THREE.MeshStandardMaterial({ color: 0xc9a27c, roughness: 0.7 });
+  const beige = new THREE.MeshStandardMaterial({ color: 0xdcd3c0, roughness: 0.8 });   // cream / beige, matte textured powder coat
   const arcus = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.75, metalness: 0.1, flatShading: true });   // matte black, fluted look from the facets
   const ringGeo = new THREE.CylinderGeometry(0.048, 0.048, 0.008, 24);
   const lensGeo = new THREE.CylinderGeometry(0.032, 0.026, 0.012, 20);
@@ -143,7 +144,7 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
   for (const L of h.lighting ?? []) {
     const g = levels[L.level];
     const attic = L.level !== 'parter';
-    const track = (obj: THREE.Object3D, x: number, y: number, tilt = false, target?: THREE.Object3D) => { if (attic) movers.push({ obj, x, y, off: obj.position.y - ceilAt(x, y), tilt, target }); };
+    const track = (obj: THREE.Object3D, x: number, y: number, tilt = false, target?: THREE.Object3D, aim?: THREE.Vector3) => { if (attic) movers.push({ obj, x, y, off: obj.position.y - ceilAt(x, y), tilt, target, aim }); };
     const col = cctColor(L.cct ?? 3000);
     const gain = L.gain ?? 1;
     // one glow material per layer, so every layer dims on its own
@@ -202,6 +203,23 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         const cx = part.reduce((s, p) => s + p[0], 0) / part.length, cy = part.reduce((s, p) => s + p[1], 0) / part.length;
         addSpot(cx, cy, ceilAt(cx, cy) - 0.02, (SPOT * dl.length) / groups);   // every spot adds the same light, whatever the room size
       }
+    }
+
+    // --- adjustable recessed spots (round, 50 mm, GU10, beige trim): flush on the ceiling, the lamp head is swivelled towards the middle of the room
+    for (const [x, y, tiltDeg = 22] of L.adjustableAt ?? []) {
+      const z = ceilAt(x, y);
+      // as in the product photo: a wide flat flange flush with the ceiling and a plain cylinder tube (about 50 mm) standing out of it
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.004, 32), beige); ring.position.set(x, z - 0.002, y);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 28), beige); tube.position.set(x, z - 0.019, y);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.0225, 0.0225, 0.002, 28), glowOf('ambient')); lens.position.set(x, z - 0.0335, y);
+      g.add(ring, tube, lens); track(ring, x, y, true); track(tube, x, y, true); track(lens, x, y, true);
+      const sl = new THREE.SpotLight(col, 0, 0, THREE.MathUtils.degToRad(34), 0.7, 2);
+      sl.position.set(x, z - 0.012, y);
+      sl.target.position.set(x, z - 3, y);
+      sl.userData.power = SPOT * 1.1 * gain; sl.userData.layer = 'ambient';
+      lights.push(sl); allLights.push(sl);
+      const dx = L.center[0] - x, dy = L.center[1] - y, dl = Math.hypot(dx, dy) || 1;     // aim towards the room centre
+      track(sl, x, y, true, sl.target, new THREE.Vector3((dx / dl) * 3 * Math.tan(THREE.MathUtils.degToRad(tiltDeg)), 0, (dy / dl) * 3 * Math.tan(THREE.MathUtils.degToRad(tiltDeg))));
     }
 
     // --- surface-mounted ceiling lamps: white opal drum with a thin black rim
