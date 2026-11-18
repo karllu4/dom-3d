@@ -135,6 +135,39 @@ export class TapeMeasure {
     return this.commit(p.clone(), new THREE.Vector3(bx, bz, by));
   }
 
+  /** Distance to the SECOND nearest wall: the nearest wall that is not the same wall (same line, or parallel and within a wall's thickness) as the nearest one. */
+  toSecondWall(world: World): number | null {
+    const p = this.selected();
+    if (!this.active || !p) return null;
+    type Cand = { d: number; qx: number; qy: number; qz: number; ax: number; ay: number; ux: number; uy: number };
+    const cands: Cand[] = [];
+    for (const s of world.solids) {
+      if (s.tag !== 'wall' || s.off) continue;
+      const dz = Math.max(s.z0 - p.y, 0, p.y - s.z1);
+      const r = s.ring;
+      let area2 = 0;
+      for (let i = 0; i < r.length; i++) { const [x0, y0] = r[i], [x1, y1] = r[(i + 1) % r.length]; area2 += x0 * y1 - x1 * y0; }
+      const ccw = area2 > 0;
+      for (let i = 0; i < r.length; i++) {
+        const [ax, ay] = r[i], [cx, cy] = r[(i + 1) % r.length];
+        const ex = cx - ax, ey = cy - ay, L = Math.hypot(ex, ey);
+        if (L < 0.45) continue;                                            // wall ends / jambs are not walls
+        const side = (ex * (p.z - ay) - ey * (p.x - ax)) / L;             // > 0: point is left of the edge
+        if ((ccw ? side : -side) > 0.02) continue;                        // the point is behind this face (inside the wall piece's side): not a visible face
+        const t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - ay) * ey) / (L * L)));
+        const qx = ax + ex * t, qy = ay + ey * t;
+        cands.push({ d: Math.hypot(Math.hypot(p.x - qx, p.z - qy), dz), qx, qy, qz: Math.min(Math.max(p.y, s.z0), s.z1), ax, ay, ux: ex / L, uy: ey / L });
+      }
+    }
+    cands.sort((a, b) => a.d - b.d);
+    const first = cands[0];
+    if (!first) return null;
+    const sameWall = (c: Cand) => Math.abs(first.ux * c.uy - first.uy * c.ux) < 0.03 && Math.abs((c.ax - first.ax) * first.uy - (c.ay - first.ay) * first.ux) < 0.05;
+    const second = cands.find((c) => !sameWall(c));
+    if (!second) return null;
+    return this.commit(p.clone(), new THREE.Vector3(second.qx, second.qz, second.qy));
+  }
+
   /** Shortest distance from the selected point to the floor below it (straight down to the floor surface, not to furniture). Metres or null. */
   toFloor(world: World): number | null {
     const p = this.selected();
