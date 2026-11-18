@@ -581,6 +581,13 @@ function buildStairs(h: HouseJ, mats: Materials, levels: Record<string, THREE.Gr
   a.add(box(T.rect[0], runY0, lastTop - 0.01, T.rect[2], runY0 + 0.06, base + 0.02, mats.concrete));
   world.solids.push(solidFromRect(L.rect, 2.57, L.z, 'floor'));
   world.solids.push(solidFromRect(T.rect, 2.57, T.z, 'floor'));
+  // The attic floor is a flat surface and the ground-floor ceiling another, so along the rim of the stair opening there was nothing between them
+  // (an empty slot 2.93 .. 3.34). Close it with the slab's edge faces: thin concrete plates set into the slab, their visible faces on the rim.
+  const [vx0, vy0, , vy1] = h.stairs.void.rect;
+  const slabLo = 2.935, slabHi = 3.338, tb = 0.03;
+  a.add(box(vx0, vy0 - tb, slabLo, T.rect[0], vy0, slabHi, mats.concrete));                 // front edge along the flight (hall side)
+  a.add(box(vx0 - tb, vy0, slabLo, vx0, vy1, slabHi, mats.concrete));                       // west edge of the opening
+  a.add(box(T.rect[0] - tb, T.rect[1], T.z, T.rect[0], T.rect[3], slabHi, mats.concrete));   // riser from the hall floor down to the top step
   // balustrade around the stair void in the attic
   for (const [p, q] of s.railings) {
     const z = 3.34;

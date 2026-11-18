@@ -148,3 +148,5 @@ body.overview #ov-tools { display: flex; }
 #ov-tools button { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--chip); color: var(--text); font-weight: 600; }
 #ov-tools button.on { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on); }
 #ov-tools button kbd { margin-left: 4px; }
+/* the simulation clock is hidden while the walkthrough menu is open (the menu has its own sun readout) */
+body.menu-open #sim-time { display: none; }

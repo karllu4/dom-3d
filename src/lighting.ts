@@ -225,12 +225,13 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
     // --- surface-mounted ceiling lamps: white opal drum with a thin black rim
     for (const [x, y] of L.lamps ?? []) {
       const z = ceilAt(x, y);
+      const k = (L.lampRadius ?? 0.225) / 0.225;                                  // bigger drums: same shape, scaled in plan
       const body = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.21, 0.09, 40), trim);
-      body.position.set(x, z - 0.045, y);
+      body.position.set(x, z - 0.045, y); body.scale.set(k, 1, k);
       const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.228, 0.228, 0.012, 40), black);
-      rim.position.set(x, z - 0.006, y);
+      rim.position.set(x, z - 0.006, y); rim.scale.set(k, 1, k);
       const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.01, 40), glow);
-      diffuser.position.set(x, z - 0.092, y);
+      diffuser.position.set(x, z - 0.092, y); diffuser.scale.set(k, 1, k);
       g.add(body, rim, diffuser);
       for (const o of [body, rim, diffuser]) track(o, x, y, true);
       addLight(x, y, z - 0.3, (6 + 0.6 * L.area) / (L.lamps?.length ?? 1));
@@ -262,7 +263,8 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 24), black);
         canopy.position.set(x, zTop - 0.01, y);
         g.add(cable, globe, cap, canopy);
-        for (const o of [cable, globe, cap, canopy]) track(o, x, y);
+        for (const o of [cable, globe, cap]) track(o, x, y);
+        track(canopy, x, y, true);                                                   // the canopy lies flat on a sloped ceiling too
         addLight(x, y, zc, L.pendantPower ?? 5);                                    // one light per globe
       }
     } else if (L.pendants?.length) {
@@ -317,6 +319,84 @@ export function buildLighting(h: HouseJ, levels: Record<string, THREE.Group>): R
         sl.userData.power = SPOT * 1.3 * gain; sl.userData.layer = 'ambient';
         lights.push(sl); allLights.push(sl);
       }
+    }
+
+    // --- black round tube spots (Arcchio "Brinja": 6 cm diameter, 13 cm high), surface-mounted: base plate on the ceiling, tube standing out of it
+    for (const [x, y] of L.tubeSpotsAt ?? []) {
+      const z = ceilAt(x, y);
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.012, 28), black); plate.position.set(x, z - 0.006, y);
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.13, 28), black); body.position.set(x, z - 0.077, y);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.003, 24), glowOf('ambient')); lens.position.set(x, z - 0.1415, y);
+      g.add(plate, body, lens); track(plate, x, y, true); track(body, x, y, true); track(lens, x, y, true);
+      addSpot(x, y, z - 0.145, SPOT * 1.1);
+    }
+
+    // --- glass pendant lamps (separate lamps, each on its own adjustable cable): clear glass dome with a warm bulb inside, black socket cap
+    const glass = new THREE.MeshStandardMaterial({ color: 0xe4efee, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+    for (const gp of L.glassPendants ?? []) {
+      const [px, py] = gp.at, zTop = ceilAt(px, py), R = gp.r ?? 0.11;
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, gp.drop, 6), black); cable.position.set(px, zTop - gp.drop / 2, py);
+      const rose = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.015, 20), black); rose.position.set(px, zTop - 0.0075, py);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.06, 18), black); cap.position.set(px, zTop - gp.drop - 0.03, py);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.72), glass); dome.position.set(px, zTop - gp.drop - 0.06 - R, py);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.04, 20, 14), glowOf('ambient')); bulb.position.set(px, zTop - gp.drop - 0.06 - R * 0.8, py);
+      dome.renderOrder = 2;
+      g.add(cable, rose, cap, dome, bulb);
+      for (const o of [cable, rose, cap, dome, bulb]) track(o, px, py);
+      addLight(px, py, zTop - gp.drop - 0.06 - R * 0.8, 3.5);
+    }
+
+    // --- bar pendant: one black bar on the ceiling, N smoked-glass globes on cables of different lengths (adjustable), each with its own warm bulb
+    const smoke = new THREE.MeshStandardMaterial({ color: 0x2c3034, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.6, depthWrite: false });
+    for (const gb of L.glassBar ?? []) {
+      const [bx, by] = gb.at, zTop = ceilAt(bx, by), R = gb.r ?? 0.11, alongX = (gb.axis ?? 'x') === 'x';
+      const bar = new THREE.Mesh(alongX ? new THREE.BoxGeometry(gb.len, 0.03, 0.07) : new THREE.BoxGeometry(0.07, 0.03, gb.len), black);
+      bar.position.set(bx, zTop - 0.015, by); g.add(bar); track(bar, bx, by);
+      gb.drops.forEach((drop, i) => {
+        const off = (i - (gb.drops.length - 1) / 2) * gb.spacing, px = alongX ? bx + off : bx, py = alongX ? by : by + off;
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, drop, 6), black); cable.position.set(px, zTop - 0.03 - drop / 2, py);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.05, 18), black); cap.position.set(px, zTop - 0.03 - drop - 0.025, py);
+        const zc = zTop - 0.03 - drop - 0.05 - R;
+        const globe = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 22), smoke); globe.position.set(px, zc, py); globe.renderOrder = 2;
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 20, 14), glowOf('ambient')); bulb.position.set(px, zc, py);
+        g.add(cable, cap, globe, bulb);
+        for (const o of [cable, cap, globe, bulb]) track(o, px, py);
+        addLight(px, py, zc, 3.5);
+      });
+    }
+
+    // --- IKEA NYMANE style ceiling lamp: round white rose (25 cm) with three individually adjustable spot shades; each shade is aimed by angles[i] (plan direction, degrees)
+    for (const c of L.spotCluster ?? []) {
+      const [cx, cy] = c.at, z = ceilAt(cx, cy);
+      const rose = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.125, 0.02, 40), trim); rose.position.set(cx, z - 0.01, cy);
+      g.add(rose); track(rose, cx, cy, true);
+      c.angles.forEach((deg, i) => {
+        const a = THREE.MathUtils.degToRad(deg), hx = cx + 0.075 * Math.cos(a), hy = cy + 0.075 * Math.sin(a);
+        const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.04, 0.095, 24), trim); shade.position.set(hx, z - 0.0675, hy);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.004, 22), glowOf('ambient')); lens.position.set(hx, z - 0.113, hy);
+        g.add(shade, lens); track(shade, hx, hy, true); track(lens, hx, hy, true);
+        const sl = new THREE.SpotLight(col, 0, 0, THREE.MathUtils.degToRad(36), 0.7, 2);
+        sl.position.set(hx, z - 0.115, hy); sl.target.position.set(hx, z - 3, hy);
+        sl.userData.power = SPOT * 1.3 * gain; sl.userData.layer = 'ambient';
+        lights.push(sl); allLights.push(sl);
+        const t = 3 * Math.tan(THREE.MathUtils.degToRad(c.tilt ?? 30));
+        track(sl, hx, hy, true, sl.target, new THREE.Vector3(Math.cos(a) * t, 0, Math.sin(a) * t));
+        void i;
+      });
+    }
+
+    // --- round 3-point pendant (one canopy disc, three LED lights hanging at different lengths), e.g. over a stairwell
+    for (const c of L.clusterPendants ?? []) {
+      const [cx, cy] = c.at, zTop = ceilAt(cx, cy);
+      const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 40), black); canopy.position.set(cx, zTop - 0.015, cy);
+      g.add(canopy); track(canopy, cx, cy);
+      c.drops.forEach((drop, i) => {
+        const a = 0.5 + (i * 2 * Math.PI) / c.drops.length, px = cx + 0.11 * Math.cos(a), py = cy + 0.11 * Math.sin(a);
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, drop, 6), black); cable.position.set(px, zTop - drop / 2, py);
+        const globe = new THREE.Mesh(new THREE.SphereGeometry(0.065, 28, 18), glowOf('ambient')); globe.position.set(px, zTop - drop - 0.06, py);
+        g.add(cable, globe); track(cable, px, py); track(globe, px, py);
+        addLight(px, py, zTop - drop - 0.06, 3);
+      });
     }
 
     // --- table / bedside lamps standing on furniture: linen drum shade on a slim base

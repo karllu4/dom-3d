@@ -57,7 +57,8 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
   const block = (r: [number, number, number, number], z1: number) => world.solids.push(solidFromRect(r, z0 - 0.05, z0 + z1, 'furniture'));
   const white2 = M(0xfbfbf9, 0.25), chrome = M(0xd8dadc, 0.2, 0.9), glassClear = new THREE.MeshStandardMaterial({ color: 0xcfe3ea, roughness: 0.05, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
   const linen = pbr('linen', 0.4, { color: 0xf3efe7 }, 0.8), duvet = pbr('linen', 0.4, { color: 0xe3d9c9 }, 0.8), rubber = M(0x2b2b2b, 0.95), wood2 = pbr('oak', 1.83, { color: 0xc9a27c, roughness: 0.7 });
-  for (const m of [fabric, fabricDark, linen, duvet]) soft.add(m);
+  const leather = M(0x45474a, 0.48), leatherDark = M(0x38393c, 0.5);
+  for (const m of [fabric, fabricDark, linen, duvet, leather, leatherDark]) soft.add(m);
   const cyl = (x: number, y: number, za: number, zb: number, r: number, m: THREE.Material, seg = 20) => {
     const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, zb - za, seg), m); c.position.set(x, (za + zb) / 2, y); c.castShadow = true; g.add(c); return c;
   };
@@ -164,6 +165,51 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         for (let i = 0; i < n; i++) b(-L + 0.18 + i * cw + 0.01, -D + 0.2, 0.42, -L + 0.18 + (i + 1) * cw - 0.01, D - 0.02, 0.5, fabric); // cushions
         for (const [lx, ly] of [[-L + 0.05, -D + 0.05], [L - 0.05, -D + 0.05], [-L + 0.05, D - 0.05], [L - 0.05, D - 0.05]]) b(lx - 0.02, ly - 0.02, 0, lx + 0.02, ly + 0.02, 0.08, anth);
         block(r!, 0.82);
+        break;
+      }
+      case 'cornersofa': {            // L-shaped leather corner sofa: 3-seat run along the y0 wall (backrest on y0) + chaise at the `chaise` end (x0 / x1)
+        const [x0, y0, x1, y1] = r!; const D = 0.95, bk = 0.22, ch = f.chaise ?? 'x0';
+        const cx0 = ch === 'x0' ? x0 : x1 - D, cx1 = ch === 'x0' ? x0 + D : x1;       // chaise footprint in x
+        const armSide = ch === 'x0' ? 'x1' : 'x0';
+        box(x0, y0, 0.12, x1, y0 + D, 0.42, leatherDark);                                // base of the long run
+        box(cx0, y0 + D, 0.12, cx1, y1, 0.42, leatherDark);                              // base of the chaise
+        box(x0, y0, 0.42, x1, y0 + bk, 0.88, leather);                                   // backrest along the wall
+        // three back cushions, slightly proud, with a seam between them
+        const sx0 = ch === 'x0' ? cx1 : x0 + 0.2, sx1 = ch === 'x0' ? x1 - 0.2 : cx0;  // seats of the long run (between the arm and the chaise)
+        const nSeat = Math.max(2, Math.round((sx1 - sx0) / 0.7)), sw = (sx1 - sx0) / nSeat;
+        for (let i = 0; i < nSeat; i++) {
+          const a = sx0 + i * sw + 0.01, b = sx0 + (i + 1) * sw - 0.01;
+          box(a, y0 + bk, 0.42, b, y0 + D, 0.5, leather);                                // seat cushion
+          box(a, y0 + bk - 0.02, 0.5, b, y0 + bk + 0.12, 0.86, leather);                 // back cushion
+        }
+        box(cx0 + 0.01, y0 + D, 0.42, cx1 - 0.01, y1 - 0.02, 0.5, leather);              // chaise cushion (continues the seat)
+        box(cx0 + 0.01, y0 + bk, 0.42, cx1 - 0.01, y0 + D, 0.5, leather);                // corner cushion
+        box(cx0 + 0.01, y0 + bk - 0.02, 0.5, cx1 - 0.01, y0 + bk + 0.12, 0.86, leather); // corner back cushion
+        // arms: high padded arm at the far end of the run, low rolled arm along the outer side of the chaise
+        const ax0 = armSide === 'x1' ? x1 - 0.2 : x0, ax1 = armSide === 'x1' ? x1 : x0 + 0.2;
+        box(ax0, y0, 0.42, ax1, y0 + D, 0.7, leather);
+        const ox0 = ch === 'x0' ? x0 : x1 - 0.16, ox1 = ch === 'x0' ? x0 + 0.16 : x1;
+        box(ox0, y0 + D, 0.42, ox1, y1, 0.62, leather);
+        box(ox0, y0, 0.42, ox1, y0 + D, 0.7, leather);
+        for (const [lx, ly] of [[x0 + 0.06, y0 + 0.06], [x1 - 0.06, y0 + 0.06], [x0 + 0.06, y1 - 0.06], [x1 - 0.06, y1 - 0.06], [ch === 'x0' ? cx1 - 0.06 : cx0 + 0.06, y1 - 0.06]]) box(lx - 0.02, ly - 0.02, 0, lx + 0.02, ly + 0.02, 0.12, anth);
+        block([x0, y0, x1, y0 + D], 0.88); block([cx0, y0 + D, cx1, y1], 0.62);
+        break;
+      }
+      case 'woodchair': {             // black leather armchair on a light-oak frame (open wooden arms, splayed legs); rot = facing direction
+        const [x, y] = f.at!; const { b } = sub(x, y, f.rot);
+        const frame = wood2;
+        for (const [lx, ly] of [[-0.29, -0.3], [0.29, -0.3], [-0.29, 0.28], [0.29, 0.28]]) b(lx - 0.025, ly - 0.025, 0, lx + 0.025, ly + 0.025, 0.36, frame);      // legs
+        b(-0.31, -0.33, 0.33, 0.31, 0.31, 0.38, frame);                                    // seat frame
+        b(-0.27, -0.29, 0.38, 0.27, 0.27, 0.47, leather);                                  // seat cushion
+        b(-0.27, -0.36, 0.47, 0.27, -0.29, 0.84, leather);                                 // backrest
+        b(-0.30, -0.37, 0.38, -0.27, -0.33, 0.86, frame); b(0.27, -0.37, 0.38, 0.30, -0.33, 0.86, frame);   // back posts
+        for (const sx of [-1, 1]) {
+          const a0 = sx < 0 ? -0.33 : 0.29, a1 = sx < 0 ? -0.29 : 0.33;
+          b(a0, -0.34, 0.57, a1, 0.28, 0.61, frame);                                       // arm rail
+          b(a0, 0.24, 0.36, a1, 0.28, 0.61, frame);                                        // front arm post
+          b(a0, -0.34, 0.38, a1, -0.30, 0.61, frame);                                      // rear arm post
+        }
+        block([x - 0.4, y - 0.4, x + 0.4, y + 0.4], 0.8);
         break;
       }
       case 'coffee': {
