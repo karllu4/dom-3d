@@ -285,8 +285,24 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
       }
       case 'wardrobe': {              // wardrobe; door gaps on the `front` side (default: x1 for axis y, else y0)
         const [x0, y0, x1, y1] = r!; const H = f.h ?? 2.2;
-        box(x0, y0, 0, x1, y1, H, f.open ? oak : white);
         const front = f.front ?? (f.axis === 'y' ? 'x1' : 'y0');
+        let lowTop = H, frontTop = H;
+        if (f.slant && front[0] === 'y') {   // top follows the sloped ceiling lining (depth steps of ~3 cm, flat across the width), max height H
+          const af = h.atticFinish, slopes = (af?.rooms ?? []).flatMap((rm) => rm.slopes);
+          const drop = af ? (af.woolUnder + af.board) * Math.sqrt(1 + h.roof.k * h.roof.k) : 0;
+          const ceil = (x: number, y: number) => {
+            for (const sp of slopes) if (pointInPoly(x, y, sp)) return sp.plane[0] * x + sp.plane[1] * y + sp.plane[2] - drop;
+            return roofH(x, y) - drop;
+          };
+          const nd = Math.max(1, Math.round((y1 - y0) / 0.03));
+          for (let i = 0; i < nd; i++) {
+            const ya = y0 + ((y1 - y0) * i) / nd, yb = y0 + ((y1 - y0) * (i + 1)) / nd;
+            let t = H;
+            for (const yy of [ya + 0.001, yb - 0.001]) for (let k = 0; k <= 4; k++) { const z = ceil(x0 + ((x1 - x0) * k) / 4, yy) - z0 - 0.015; if (Number.isFinite(z)) t = Math.min(t, z); }
+            t = Math.max(0.5, t); lowTop = Math.min(lowTop, t); if (i === (front === 'y0' ? 0 : nd - 1)) frontTop = t;
+            box(x0, ya, 0, x1, yb + 0.0005, t, f.open ? oak : white);
+          }
+        } else box(x0, y0, 0, x1, y1, H, f.open ? oak : white);
         const alongY = front[0] === 'x';
         const fp = { x0, x1, y0, y1 }[front], out = front[1] === '1' ? 1 : -1;   // front plane and its outward direction
         const s0 = alongY ? y0 : x0, len = alongY ? y1 - y0 : x1 - x0;
@@ -297,7 +313,7 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
           : box(a0, fp - 0.002 * out, za, a1, fp + 0.004 * out, zb, m);
         const top = f.builtin ? H - 0.55 : H;                // built-in: separate top cabinets up to the ceiling
         if (!f.open) {
-          for (let i = 1; i < n; i++) { const t = s0 + (len * i) / n; strip(t - 0.003, t + 0.003, 0.05, H - (f.builtin ? 0 : 0.05)); }
+          for (let i = 1; i < n; i++) { const t = s0 + (len * i) / n; strip(t - 0.003, t + 0.003, 0.05, Math.min(H, frontTop) - (f.builtin ? 0 : 0.05)); }
           if (f.builtin) {
             strip(s0, s0 + len, top - 0.003, top + 0.003);                        // gap between tall doors and top cabinets
             strip(s0, s0 + len, 0, 0.06, M(0xe4e0d8, 0.5));                       // recessed plinth line
@@ -308,7 +324,7 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
           }
         }
         else for (let zz = 0.35; zz < H; zz += 0.4) box(x0 + 0.02, y0 + 0.02, zz, x1 - 0.02, y1 - 0.02, zz + 0.02, white);  // open shelves
-        block(r!, H);
+        block(r!, lowTop);
         break;
       }
       case 'bookcase': {              // open oak bookcase: sides, back, shelves, rows of books; open on the `front` side
@@ -529,15 +545,16 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         break;
       }
       case 'vanity': {                // wall-hung double vanity, 2 basins
-        const [x0, y0, x1, y1] = r!; const n = f.sinks ?? 1;
+        const [x0, y0, x1, y1] = r!; const n = f.sinks ?? 1; const nw = f.wall === 'y0';   // wall = y0: backs onto the y0 wall (default: y1)
         box(x0, y0, 0.45, x1, y1, 0.82, oak);
         box(x0, y0, 0.82, x1, y1, 0.85, white2);
         for (let i = 0; i < n; i++) {
           const cx = x0 + ((x1 - x0) * (i + 0.5)) / n;
-          box(cx - 0.22, y0 + 0.05, 0.85, cx + 0.22, y1 - 0.08, 0.97, white2);
-          cyl(cx, y1 - 0.04, 0.97, 1.15, 0.012, chrome);
+          if (nw) { box(cx - 0.22, y0 + 0.08, 0.85, cx + 0.22, y1 - 0.05, 0.97, white2); cyl(cx, y0 + 0.04, 0.97, 1.15, 0.012, chrome); }
+          else { box(cx - 0.22, y0 + 0.05, 0.85, cx + 0.22, y1 - 0.08, 0.97, white2); cyl(cx, y1 - 0.04, 0.97, 1.15, 0.012, chrome); }
         }
-        box(x0 + 0.05, y1 - 0.01, 1.2, x1 - 0.05, y1, 2.05, M(0xc8d4d8, 0.05, 0.6));   // mirror
+        if (nw) box(x0 + 0.05, y0, 1.2, x1 - 0.05, y0 + 0.01, 2.05, M(0xc8d4d8, 0.05, 0.6));   // mirror on the y0 wall
+        else box(x0 + 0.05, y1 - 0.01, 1.2, x1 - 0.05, y1, 2.05, M(0xc8d4d8, 0.05, 0.6));   // mirror
         block(r!, 0.97);
         break;
       }

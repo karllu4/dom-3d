@@ -262,7 +262,7 @@ async function main() {
   const tape = new TapeMeasure(scene, camera, hs.root, $('hud'));
   let snap = true;
   const tapeStatus = () => {
-    $('measure-status').textContent = tape.active ? `Measure · click 2 points · 1 floor · 2 nearest wall · 3 second wall · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
+    $('measure-status').textContent = tape.active ? `Measure · click 2 points · 0 floor · 1-4 nearest…4th nearest wall · snap ${snap ? 'on' : 'off'} (N) · Z undo · X clear · T exit` : '';
     $('measure-status').classList.toggle('hidden', !tape.active);
   };
   const toggleTape = () => { tape.toggle(); $('t-measure').classList.toggle('on', tape.active); tapeStatus(); };
@@ -373,11 +373,11 @@ async function main() {
     }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
-    if (tape.active && !e.repeat && /^(Digit|Numpad)[123]$/.test(e.code)) {
-      // from the selected point (first click, else the crosshair): 1 = floor, 2 = nearest wall, 3 = second nearest wall
+    if (tape.active && !e.repeat && /^(Digit|Numpad)[0-4]$/.test(e.code)) {
+      // from the selected point (first click, else the crosshair): 0 = floor, 1 = nearest wall, 2..4 = second..fourth nearest wall
       const n = e.code.slice(-1);
-      const d = n === '1' ? tape.toFloor(hs.world) : n === '2' ? tape.toWall(hs.world) : tape.toSecondWall(hs.world);
-      const what = n === '1' ? 'floor' : n === '2' ? 'nearest wall' : 'second nearest wall';
+      const d = n === '0' ? tape.toFloor(hs.world) : n === '1' ? tape.toWall(hs.world) : tape.toNthWall(hs.world, +n);
+      const what = n === '0' ? 'floor' : ['', 'nearest', 'second nearest', 'third nearest', 'fourth nearest'][+n] + ' wall';
       toast(d === null ? `No ${what} found` : `To ${what}: ${(d * 100).toFixed(1)} cm`);
     }
     if (tape.active && (e.code === 'KeyZ' || e.code === 'Backspace')) tape.undo();

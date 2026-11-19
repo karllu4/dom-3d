@@ -135,8 +135,8 @@ export class TapeMeasure {
     return this.commit(p.clone(), new THREE.Vector3(bx, bz, by));
   }
 
-  /** Distance to the SECOND nearest wall: the nearest wall that is not the same wall (same line, or parallel and within a wall's thickness) as the nearest one. */
-  toSecondWall(world: World): number | null {
+  /** Distance to the n-th nearest wall (n >= 2): walls are distinct when not on the same line (same line, or parallel and within a wall's thickness). */
+  toNthWall(world: World, n: number): number | null {
     const p = this.selected();
     if (!this.active || !p) return null;
     type Cand = { d: number; qx: number; qy: number; qz: number; ax: number; ay: number; ux: number; uy: number };
@@ -160,12 +160,12 @@ export class TapeMeasure {
       }
     }
     cands.sort((a, b) => a.d - b.d);
-    const first = cands[0];
-    if (!first) return null;
-    const sameWall = (c: Cand) => Math.abs(first.ux * c.uy - first.uy * c.ux) < 0.03 && Math.abs((c.ax - first.ax) * first.uy - (c.ay - first.ay) * first.ux) < 0.05;
-    const second = cands.find((c) => !sameWall(c));
-    if (!second) return null;
-    return this.commit(p.clone(), new THREE.Vector3(second.qx, second.qz, second.qy));
+    const sameWall = (f: Cand, c: Cand) => Math.abs(f.ux * c.uy - f.uy * c.ux) < 0.03 && Math.abs((c.ax - f.ax) * f.uy - (c.ay - f.ay) * f.ux) < 0.05;
+    const walls: Cand[] = [];
+    for (const c of cands) if (!walls.some((f) => sameWall(f, c))) walls.push(c);
+    const nth = walls[n - 1];
+    if (!nth) return null;
+    return this.commit(p.clone(), new THREE.Vector3(nth.qx, nth.qz, nth.qy));
   }
 
   /** Shortest distance from the selected point to the floor below it (straight down to the floor surface, not to furniture). Metres or null. */
