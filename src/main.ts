@@ -8,6 +8,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
+import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, CLINKER_LAYERS } from './facade';
+import type { FacadeStyle, Layer, Swatch } from './facade';
 import { buildHouse } from './house';
 import { Player } from './player';
 import { Minimap, roomAt, levelForFeet } from './hud';
@@ -388,6 +390,84 @@ async function main() {
       showToast(`Garage door: ${hs.garage.label}`, 3500);
     }
   });
+  // ---------- facade designs (facade.ts): a style fills in a "look"; every colour in it can then be overridden by hand
+  interface Look { clinker: boolean; styleId: string; raw: boolean; wall: string; plinth: string; gate: { color: string; wood: boolean }; door: string; door2: string; layers: Layer[] }
+  const lookOf = (st: FacadeStyle): Look => ({ clinker: !!st.clinker, styleId: st.id, raw: st.id === 'raw', wall: st.wall, plinth: st.plinth, gate: { ...st.gate }, door: st.door, door2: st.door2, layers: st.layers });
+  let facadeIdx = 0;
+  let look = lookOf(FACADE_STYLES[0]);
+  const facadeBtns: HTMLButtonElement[] = [];
+  const colourRows: Record<string, { sync: () => void }> = {};
+  const doorById = (id: string) => hs.doors.find((d) => (d as { id?: string }).id === id) as { recolor: (hex: string) => void } | undefined;
+  const applyLook = () => {
+    applyFacadeUniforms({ id: look.raw ? 'raw' : 'x', wall: look.wall, plinth: look.plinth, layers: [...look.layers, ...(look.clinker ? CLINKER_LAYERS : [])] });
+    hs.garage?.setLook(look.gate.color, look.gate.wood);
+    doorById('Dz1')?.recolor(look.door);
+    doorById('Dz2')?.recolor(look.door2);
+    const st = FACADE_STYLES[facadeIdx];
+    const custom = look.styleId === 'custom';
+    facadeBtns.forEach((b, j) => b.classList.toggle('on', !custom && j === facadeIdx));
+    $('ov-facade').textContent = `Facade: ${custom ? st.name + ' (modified)' : st.name}`;
+    for (const r of Object.values(colourRows)) r.sync();
+    try { localStorage.setItem('facadeLook', JSON.stringify({ id: FACADE_STYLES[facadeIdx].id, look })); } catch { /* private mode */ }
+  };
+  const setFacade = (i: number, announce = true) => {
+    facadeIdx = ((i % FACADE_STYLES.length) + FACADE_STYLES.length) % FACADE_STYLES.length;
+    look = lookOf(FACADE_STYLES[facadeIdx]);
+    applyLook();
+    if (announce) showToast(`Facade: ${FACADE_STYLES[facadeIdx].name}. ${FACADE_STYLES[facadeIdx].tag}`, 4000);
+  };
+  const facadeBox = $('facades');
+  FACADE_STYLES.forEach((st, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="sw" style="background:${st.wall}"></span><span class="sw" style="background:${st.layers[0]?.a ?? st.plinth}"></span>${st.name}`;
+    b.title = st.tag;
+    b.onclick = () => setFacade(i);
+    facadeBtns.push(b); facadeBox.appendChild(b);
+  });
+  // colour rows: preset swatches + free picker, for each part
+  const rows: { key: 'wall' | 'plinth' | 'gate' | 'door' | 'door2'; label: string; pal: Swatch[] }[] = [
+    { key: 'wall', label: 'Walls', pal: PAL_WALL }, { key: 'plinth', label: 'Plinth', pal: PAL_WALL },
+    { key: 'gate', label: 'Garage door', pal: PAL_GATE },
+    { key: 'door', label: 'Entrance door', pal: PAL_DOOR }, { key: 'door2', label: 'Back door', pal: PAL_DOOR },
+  ];
+  const colBox = $('colours');
+  for (const r of rows) {
+    const row = document.createElement('div'); row.className = 'crow';
+    const lab = document.createElement('span'); lab.className = 'clab'; lab.textContent = r.label; row.appendChild(lab);
+    const cur = () => (r.key === 'gate' ? look.gate.color : look[r.key]);
+    const set = (c: string, wood = false) => {
+      if (r.key === 'gate') look.gate = { color: c, wood }; else look[r.key] = c;
+      if (r.key === 'wall' || r.key === 'plinth') look.raw = false;   // plastered / painted walls instead of raw blocks
+      look.styleId = 'custom'; applyLook();
+    };
+    const sws = r.pal.map((p) => {
+      const b = document.createElement('button'); b.className = 'cs'; b.title = p.n + (p.wood ? '' : ''); b.style.background = p.c;
+      if (p.wood) b.classList.add('wood');
+      b.onclick = () => set(p.c, !!p.wood); row.appendChild(b); return { b, p };
+    });
+    const inp = document.createElement('input'); inp.type = 'color'; inp.title = 'Any colour'; inp.className = 'cpick';
+    inp.oninput = () => set(inp.value, false); row.appendChild(inp);
+    colBox.appendChild(row);
+    colourRows[r.key] = { sync: () => {
+      const c = cur().toLowerCase(); inp.value = c;
+      for (const { b, p } of sws) b.classList.toggle('on', p.c.toLowerCase() === c && !!p.wood === (r.key === 'gate' ? look.gate.wood : false));
+    } };
+  }
+  // clinker facing (Cerrad Piatto Sand) at the entrance and under the kitchen window: on top of any design
+  const clk = document.createElement('button');
+  clk.className = 'clinker-toggle';
+  clk.onclick = () => { look.clinker = !look.clinker; applyLook(); };
+  colBox.appendChild(clk);
+  colourRows.clinker = { sync: () => { clk.classList.toggle('on', look.clinker); clk.textContent = `Clinker slips Cerrad Piatto Sand 30×7.4 (entrance + under kitchen window, optional on any design): ${look.clinker ? 'on' : 'off'}`; } };
+  $('ov-facade').onclick = () => setFacade(facadeIdx + 1);
+  addEventListener('keydown', (e) => { if (e.code === 'KeyN' && !e.repeat) setFacade(facadeIdx + (e.shiftKey ? -1 : 1)); });
+  try {
+    const saved = JSON.parse(localStorage.getItem('facadeLook') ?? 'null');
+    const savedIdx = FACADE_STYLES.findIndex((f) => f.id === saved?.id);   // a design that was removed is simply forgotten
+    if (saved?.look && savedIdx >= 0) { facadeIdx = savedIdx; /* clinker always starts from the design's own setting */ const { roof: _r, clinker: _c, ...keep } = saved.look; look = { ...lookOf(FACADE_STYLES[facadeIdx]), ...keep }; }
+  } catch { /* ignore */ }
+  applyLook();
+
   syncToggles();
 
   $('start').onclick = () => {
@@ -400,7 +480,7 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
+  Object.assign(window, { dom3d: { setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;

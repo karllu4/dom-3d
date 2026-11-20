@@ -63,7 +63,7 @@ Orientation (fitted on the geoportal orthophoto, `site` in the config): the entr
 - No interior doors installed; the side door Dz2 and the garage gate are shown as open frames.
 - Windows per the WIKĘD offers (confirmed by owner): black HS 2440 in OB1 (arcade, opening widened symmetrically
   from 1.80 m), HS MOVE 1935 in W2 (kitchen/dining). Kitchen corner window glazing meets at the corner.
-- Roof covering: Braas Turmalin, anthracite (matt engobe) — tile size in the texture is approximate.
+- Roof covering: Braas Turmalin, Anthrazit (matt engobe), per the Braas datasheet GD 356 (03/2016): tile 475 x 280 mm, cover width 240 mm, cover length 355–380 mm (each roof face gets a whole number of courses, first nose at the eave, first column at the verge), 25–30 mm thick, laid in straight columns, 11.0–11.7 tiles/m², 4.4 kg, minimum pitch 25°.
 - All window frames incl. both HS sliding doors in Winchester wood decor. Roof windows 78×118 (2× over 2/6, 2× over 2/8), roof hatch 45×55,
   chimney 0.88×0.74 to +8.99 in grey clinker — all positioned from *Rzut dachu* (`roofItems` / `chimney` in the config).
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { HouseJ, LevelJ, OpeningJ, Pt, Rect } from './types';
 import { flatGeometry, pointInPoly, prismGeometry, rectPoly, slopedGeometry, slopedSkirt } from './geometry';
-import { clipAboveRoof, roofClipDepthMaterial, type Materials } from './materials';
+import { clipAboveRoof, roofClipDepthMaterial, TILE_GAUGE, TILE_GAUGE_RANGE, type Materials } from './materials';
 import { makeRoofHeight, roofGLSL } from './roof';
 import { World, solidFromPoly, solidFromRect, solidFromSegment, type Solid } from './physics';
 
@@ -80,6 +80,8 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       const passable = ['door', 'extdoor', 'entrance', 'hs', 'balcony', 'gate'].includes(o.kind);
       if (!passable && o.sill > z0 + 0.01) addWall(r, z0, o.sill);
       else if (passable && !isAttic && o.sill > z0 + 0.01) addWall(r, z0, o.sill - 0.005, false); // hidden support below the floor
+      // attic balcony doors sit on the outer face of a 44 cm wall: the wall must run up to the threshold (the floor slab does not reach through it)
+      else if (passable && isAttic && o.kind === 'balcony' && o.sill > z0 + 0.01) addWall(r, z0, o.sill - 0.005, false);
       if (o.head < z1 - 0.01) addWall(r, o.head, z1, true);
       if (o.door) doors.push(buildDoor(g, o, mats, insideLevel(lv.id), world));
       else if (o.garage) { frameOnly(g, o, true, mats); garage = new GarageDoor(g, o, world); doors.push(garage); }
@@ -145,7 +147,14 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       levels['poddasze'].add(m);
     }
     // steel members lying in the roof slopes (like rafters), e.g. between the roof windows in 2/8
-    for (const b of h.steel.roofBeams ?? []) levels['poddasze'].add(timberOnPlane(b.p, b.planes, b.width, b.rise, steel));
+    // the steel must never poke through the roof covering: clip it at the top of the roof build-up (tiles, battens)
+    const steelClip = clipAboveRoof(steel, glsl, clip - 0.015);
+    const steelDepth = roofClipDepthMaterial(glsl, clip - 0.015);
+    for (const b of h.steel.roofBeams ?? []) {
+      const m = timberOnPlane(b.p, b.planes, b.width, b.rise, steelClip);
+      m.customDepthMaterial = steelDepth;
+      levels['poddasze'].add(m);
+    }
   }
   // timber posts with head pieces (S2/S3 in 2/8)
   for (const p of h.timberPosts?.posts ?? []) {
@@ -605,6 +614,24 @@ function buildStairs(h: HouseJ, mats: Materials, levels: Record<string, THREE.Gr
   }
 }
 
+/**
+ * Turmalin for one roof face. Like a roofer, divide the slope into a whole number of courses (gauge 355-380 mm),
+ * start the first nose at the eave and the first tile column at the verge (lowest / left-most point of the face).
+ */
+function tileMaterial(f: { plane: [number, number, number]; outer: Pt[] }, mats: Materials): THREE.Material {
+  const [a, b] = f.plane;
+  const g = Math.hypot(a, b) || 1;
+  const gx = a / g, gy = b / g, slopeLen = Math.sqrt(1 + g * g);
+  let vMin = Infinity, vMax = -Infinity, uMin = Infinity;
+  for (const [x, y] of f.outer) {
+    const v = (gx * x + gy * y) * slopeLen, u = -gy * x + gx * y;
+    vMin = Math.min(vMin, v); vMax = Math.max(vMax, v); uMin = Math.min(uMin, u);
+  }
+  const n = Math.max(1, Math.round((vMax - vMin) / TILE_GAUGE));
+  const gauge = Math.min(TILE_GAUGE_RANGE[1], Math.max(TILE_GAUGE_RANGE[0], (vMax - vMin) / n));
+  return mats.tilesFor(gauge, uMin, vMin);
+}
+
 function buildRoof(h: HouseJ, mats: Materials): THREE.Group {
   const g = new THREE.Group();
   g.name = 'roof';
@@ -613,15 +640,14 @@ function buildRoof(h: HouseJ, mats: Materials): THREE.Group {
   const rafterRise = h.roof.rafter.depth * Math.sqrt(1 + h.roof.k * h.roof.k);
   for (const f of h.roof.faces) {
     g.add(mesh(slopedGeometry(f, f.plane, rafterRise, false), mats.rafters)); // membrane on top of the rafters
-    g.add(mesh(slopedGeometry(f, f.plane, t, true), mats.tiles));
+    g.add(mesh(slopedGeometry(f, f.plane, t, true), tileMaterial(f, mats)));
     // metal flashing around all roof edges (verge flashing on rakes, eaves trim): anthracite, covers the
     // edge of the roof build-up and wraps ~3 cm over the tiles, as on the site photos
 
   }
   // fill the vertical slots where two roof planes meet at different heights (wall, from the lower
   // plane's underside to the upper plane's tiles), double-sided so it closes the slot from both sides
-  const fill = mats.facade.clone();
-  fill.side = THREE.DoubleSide;
+  const fill = mats.makeFacade(THREE.DoubleSide);
   for (const st of h.roof.steps) {
     const [x0, y0, x1, y1] = st.p;
     const v = [
@@ -797,6 +823,13 @@ export class GarageDoor implements Openable {
     this.mat.color.set(0xffffff);
     this.mat.needsUpdate = true;
   }
+  /** Custom look (facade design): colour + optional oak grain, keeps the rib design of the current variant. */
+  setLook(color: string, wood: boolean) {
+    const v = this.variants[this.variant];
+    this.mat.map?.dispose();
+    this.mat.map = garageTexture({ ...v, color, wood }, this.o.garage!.sections);
+    this.mat.needsUpdate = true;
+  }
   toggle() { this.open = !this.open; }
   update(dt: number) {
     const target = this.open ? 1 : 0;
@@ -848,6 +881,8 @@ function garageTexture(v: { color: string; ribs: number; wood: boolean }, sectio
 /** Hinged door leaf (swing in or out per config); press E near it (see main.ts). */
 export class Door implements Openable {
   open = false;
+  /** Repaint the leaf, frame and sidelight (facade design / colour picker). */
+  recolor: (hex: string) => void = () => {};
   private angle = 0;
   constructor(public id: string, public label: string, public center: Pt, public floorZ: number,
               private pivot: THREE.Group, private base: number, private openAngle: number, private solid: Solid) {}
@@ -932,6 +967,7 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
   // DB 107: three raised panels on the outside face (proportions taken from the product photo, top to bottom)
   const outZ = -nIn * (T / 2 + 0.03), inZ = nIn * (T / 2 + 0.03);
   const groove = new THREE.MeshStandardMaterial({ color: new THREE.Color(d.color).multiplyScalar(0.45), roughness: 0.6 });
+  const lineMats: THREE.MeshStandardMaterial[] = [];
   const panel = (fx0: number, fx1: number, fy0: number, fy1: number) => {
     const w = L * (fx1 - fx0), hh = H * (fy1 - fy0), cx = L * (fx0 + fx1) / 2, cy = H * (fy0 + fy1) / 2;
     const out = -nIn;
@@ -946,7 +982,9 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
   if (grooved) {
     // Wikęd BASIC 3.0 "26c": flat pressed steel leaf with 5 full-width horizontal grooves
     for (const f of [0.1, 0.3, 0.5, 0.7, 0.9]) {
-      const gr = mesh(new THREE.BoxGeometry(L - 0.06, 0.008, 0.004), new THREE.MeshStandardMaterial({ color: new THREE.Color(d.color).multiplyScalar(1.9), roughness: 0.35, metalness: 0.2 }));
+      const lm = new THREE.MeshStandardMaterial({ color: new THREE.Color(d.color).multiplyScalar(1.9), roughness: 0.35, metalness: 0.2 });
+      lineMats.push(lm);
+      const gr = mesh(new THREE.BoxGeometry(L - 0.06, 0.008, 0.004), lm);
       gr.position.set(L / 2, H * (1 - f), -nIn * (T / 2 + 0.001));
       leaf.add(gr);
     }
@@ -1001,7 +1039,13 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
   const solid = solidFromRect([Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)], o.sill, o.head, 'door');
   world.solids.push(solid);
   const [mx, my] = P((l0 + l1) / 2, plane);
-  return new Door(o.id, `${d.model ?? 'door'} · ${d.colorName ?? ''}`, [mx, my], o.sill, pivot, base, openAngle, solid);
+  const door = new Door(o.id, `${d.model ?? 'door'} · ${d.colorName ?? ''}`, [mx, my], o.sill, pivot, base, openAngle, solid);
+  door.recolor = (hex) => {
+    col.color.set(hex);
+    groove.color.set(hex).multiplyScalar(0.45);
+    for (const m of lineMats) m.color.set(hex).multiplyScalar(1.9);
+  };
+  return door;
 }
 
 /**
