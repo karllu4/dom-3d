@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
+import { Zombie, ZOMBIE_ROUTE } from './zombie';
 import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, clinkerLayers, clinkerPair, CLINKER_DEFAULT, PAL_CLINKER } from './facade';
 import type { FacadeStyle, Layer, Swatch } from './facade';
 import { buildHouse } from './house';
@@ -118,8 +119,10 @@ async function main() {
   scene.add(sun, sun.target);
   let sunBase = 1.7;
   const sunState = { month: new Date().getMonth() + 1, hour: 13 };
+  let sunElev = 30;                                   // degrees above the horizon (the zombie walks only after dark)
   const applySun = () => {
     const sp = sunPosition(site.lat, site.lon, sunState.month, 15, sunState.hour);
+    sunElev = sp.elevation;
     sunDir.copy(bearingToWorld(sp.azimuth, Math.max(sp.elevation, -4), site.planDownBearingDeg));
     su.sunPosition.value.copy(sunDir);
     sun.position.copy(center).addScaledVector(sunDir, 30);
@@ -205,6 +208,8 @@ async function main() {
   // ---------- player & overview
   const player = new Player(camera, renderer.domElement, hs.world);
   player.teleport(house.spawn.x, house.spawn.y, house.outside.groundZ, house.spawn.yawDeg);
+  const zombie = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world);
+  scene.add(zombie.group);
 
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(7, 2, 6.5);
@@ -292,6 +297,38 @@ async function main() {
       if (d !== null) toast(`Distance: ${(d * 100).toFixed(1)} cm`);
     }
   });
+  // ---------- zombie: light beam (left click) and getting caught (red screen, wake up in bed)
+  const hurt = $('hurt');
+  let hurtT = 0, shotCd = 0, beamT = 0;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.14, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
+  beam.visible = false; beam.frustumCulled = false; scene.add(beam);
+  const flash = new THREE.PointLight(0xfff2c0, 0, 12, 1.5); scene.add(flash);
+  const shoot = () => {
+    if (shotCd > 0) return;
+    shotCd = 0.45; beamT = 0.14;
+    const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    const origin = camera.position.clone();
+    const hit = zombie.hit(origin, dir, 15, 0.12);
+    if (hit) { zombie.ignite(); toast('Direct hit — it burns!'); }
+    const len = hit ? origin.distanceTo(new THREE.Vector3(zombie.group.position.x, zombie.group.position.y + 1, zombie.group.position.z)) : 9;
+    const right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+    const start = origin.clone().addScaledVector(dir, 0.4).addScaledVector(right, 0.18).add(new THREE.Vector3(0, -0.15, 0));
+    beam.position.copy(start).addScaledVector(dir, len / 2);
+    beam.scale.set(1, len, 1);
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    beam.visible = true;
+    flash.position.copy(origin).addScaledVector(dir, 1.2); flash.intensity = 40;
+  };
+  document.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !tape.active && player.controls.isLocked && !overview) shoot();
+  });
+  const caughtByZombie = () => {
+    hurtT = 1.2; hurt.style.opacity = '0.85';
+    player.crouch = false;
+    player.teleport(2.3, 3.6, 3.34, 180);          // wake up at the foot of the bed
+    zombie.reset(new THREE.Vector3(2.3, 0, 3.6));
+    toast('The zombie got you… you wake up in bed');
+  };
   const toggleRoomLight = () => {
     const { label } = roomAt(house, player.pos.x, player.pos.y, player.feet);
     if (!label) { toast('Not inside a room'); return; }
@@ -511,7 +548,7 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
+  Object.assign(window, { dom3d: { zombie, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -566,6 +603,11 @@ async function main() {
     const dt = timer.getDelta();
     for (const d of hs.doors) d.update(dt);
     tickSimClock();
+    zombie.update(dt, sunElev < -4, camera.position);
+    shotCd -= dt;
+    if (beamT > 0) { beamT -= dt; if (beamT <= 0) { beam.visible = false; flash.intensity = 0; } else (beam.material as THREE.MeshBasicMaterial).opacity = 0.7 * (beamT / 0.14); }
+    if (hurtT > 0) { hurtT -= dt; hurt.style.opacity = String(Math.max(0, Math.min(0.85, hurtT / 1.2 * 0.85))); }
+    if (!overview && zombie.caught) caughtByZombie();
     if (overview) {
       orbit.update();
     } else {
