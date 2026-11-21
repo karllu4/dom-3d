@@ -65,7 +65,7 @@
     { "id": "D5-1/6", "level": "parter", "kind": "door", "rect": [12.511, 3.929, 13.408, 4.17], "sill": 0.0, "head": 2.05 },
     { "id": "D1",     "level": "parter", "kind": "door", "rect": [4.988, 6.367, 5.992, 6.608], "sill": 0.0, "head": 2.05 },
 
-    { "id": "OB3", "level": "poddasze", "kind": "balcony", "rect": [5.052, -0.004, 7.05, 0.436], "sill": 3.34, "head": 5.907, "frame": "caramel", "panes": 2, "catalog": "#11 1975x2475(+46+46)", "juliet": { "opening": 1.880, "extend": 0.160, "dxf": "Juliet_balcony_west_extra_circle.dxf" } },
+    { "id": "OB3", "level": "poddasze", "kind": "balcony", "rect": [5.052, -0.004, 7.05, 0.436], "sill": 3.34, "head": 5.907, "frame": "caramel", "panes": 2, "catalog": "#11 1975x2475(+46+46)", "juliet": { "opening": 1.975, "extend": 0.1785, "dxf": "Juliet_balcony_west_extra_circle.dxf", "dxfNote": "DXF is drawn for a 1880 opening; the ordered window #11 is 1975 wide (17 rings, 16 balusters, post-to-post 2332)" } },
     { "id": "OB2", "level": "poddasze", "kind": "balcony", "rect": [0.0, 4.297, 0.442, 5.897], "sill": 3.34, "head": 5.887, "frame": "caramel", "panes": 2, "catalog": "#9 1560x2455(+46+46)", "juliet": { "opening": 1.560, "extend": 0.122, "dxf": "Juliet_balcony_south.dxf" } },
     { "id": "06a", "level": "poddasze", "kind": "window", "rect": [0.0, 2.646, 0.442, 3.548], "sill": 4.14, "head": 5.94, "frame": "caramel", "panes": 1, "catalog": "#8 860x1770(+30)" },
     { "id": "06b", "level": "poddasze", "kind": "window", "rect": [0.0, 6.646, 0.442, 7.548], "sill": 4.14, "head": 5.94, "frame": "caramel", "panes": 1, "catalog": "#10 860x1770(+30)" },
@@ -81,7 +81,7 @@
   ],
 
   "_juliet": "Juliet balconies per balkon_francuski/*.dxf (mm): posts RHS 50x50 at both ends (outer faces = opening + 2*extend), rails RHS 40x40 at 50-90 / 900-940 / 1060-1100 above finished floor, balusters 12x12 at 132 c/c, rings OD120/ID96 between the two top rails alternating with balusters, 60 mm off the facade on 4 arms RHS 60x40 at 250 and 900, RAL 7037.",
-  "julietColor": "#7a7c7b",
+  "julietColor": "#3e4145",
 
   "_beams": "Downstand beams visible below the ceiling (dashed on the plan). Kitchen/dining beam: 24 cm wide, underside +2.63 (plan label 311/263).",
   "beams": [

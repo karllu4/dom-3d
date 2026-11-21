@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
-import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, CLINKER_LAYERS } from './facade';
+import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, clinkerLayers, clinkerPair, CLINKER_DEFAULT, PAL_CLINKER } from './facade';
 import type { FacadeStyle, Layer, Swatch } from './facade';
 import { buildHouse } from './house';
 import { Player } from './player';
@@ -145,6 +145,24 @@ async function main() {
     (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour);
     applySun();
   };
+  // the simulated clock runs by itself: 5 real minutes = 1 hour (Y pauses / resumes, +/- and the slider still jump)
+  const SIM_HOURS_PER_SEC = 1 / 300;
+  let simRunning = true, simAcc = 0;
+  const syncPlay = () => { const b = $('sim-play'); b.textContent = simRunning ? '⏸' : '▶'; b.title = simRunning ? 'Time runs: 5 real minutes = 1 hour. Click or press Y to pause' : 'Time paused. Click or press Y to resume (5 real minutes = 1 hour)'; };
+  const toggleSimClock = () => { simRunning = !simRunning; syncPlay(); showToast(simRunning ? 'Time runs: 5 real minutes = 1 hour' : 'Time paused', 2000); };
+  $('sim-play').onclick = toggleSimClock;
+  addEventListener('keydown', (e) => { if (e.code === 'KeyY' && !e.repeat) toggleSimClock(); });
+  let lastWall = performance.now();
+  const tickSimClock = () => {
+    const now = performance.now(), real = Math.min((now - lastWall) / 1000, 10);   // real seconds since the last frame (a hidden tab does not skip the day)
+    lastWall = now;
+    if (!simRunning) return;
+    sunState.hour += real * SIM_HOURS_PER_SEC;
+    if (sunState.hour > 23.5) sunState.hour = 5;                         // next morning (the slider covers 05:00-23:30)
+    simAcc += real;
+    if (simAcc >= 3) { simAcc = 0; (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour); applySun(); }   // sun / sky refresh every 3 s (0.6 min of sim time)
+  };
+  syncPlay();
   $('sim-later').onclick = () => stepTime(0.5);
   $('sim-earlier').onclick = () => stepTime(-0.5);
   // Sunlight does not bounce in a rasterizer, so interiors get a soft, nearly neutral fill:
@@ -391,15 +409,15 @@ async function main() {
     }
   });
   // ---------- facade designs (facade.ts): a style fills in a "look"; every colour in it can then be overridden by hand
-  interface Look { clinker: boolean; styleId: string; raw: boolean; wall: string; plinth: string; gate: { color: string; wood: boolean }; door: string; door2: string; layers: Layer[] }
-  const lookOf = (st: FacadeStyle): Look => ({ clinker: !!st.clinker, styleId: st.id, raw: st.id === 'raw', wall: st.wall, plinth: st.plinth, gate: { ...st.gate }, door: st.door, door2: st.door2, layers: st.layers });
+  interface Look { clinker: boolean; clinkerColor: string; styleId: string; raw: boolean; wall: string; plinth: string; gate: { color: string; wood: boolean }; door: string; door2: string; layers: Layer[] }
+  const lookOf = (st: FacadeStyle): Look => ({ clinker: !!st.clinker, clinkerColor: CLINKER_DEFAULT, styleId: st.id, raw: st.id === 'raw', wall: st.wall, plinth: st.plinth, gate: { ...st.gate }, door: st.door, door2: st.door2, layers: st.layers });
   let facadeIdx = 0;
   let look = lookOf(FACADE_STYLES[0]);
   const facadeBtns: HTMLButtonElement[] = [];
   const colourRows: Record<string, { sync: () => void }> = {};
   const doorById = (id: string) => hs.doors.find((d) => (d as { id?: string }).id === id) as { recolor: (hex: string) => void } | undefined;
   const applyLook = () => {
-    applyFacadeUniforms({ id: look.raw ? 'raw' : 'x', wall: look.wall, plinth: look.plinth, layers: [...look.layers, ...(look.clinker ? CLINKER_LAYERS : [])] });
+    applyFacadeUniforms({ id: look.raw ? 'raw' : 'x', wall: look.wall, plinth: look.plinth, layers: [...look.layers, ...(look.clinker ? clinkerLayers(look.clinkerColor) : [])] });
     hs.garage?.setLook(look.gate.color, look.gate.wood);
     doorById('Dz1')?.recolor(look.door);
     doorById('Dz2')?.recolor(look.door2);
@@ -412,7 +430,8 @@ async function main() {
   };
   const setFacade = (i: number, announce = true) => {
     facadeIdx = ((i % FACADE_STYLES.length) + FACADE_STYLES.length) % FACADE_STYLES.length;
-    look = lookOf(FACADE_STYLES[facadeIdx]);
+    const keepClinker = look.clinkerColor;                 // a picked clinker colour survives a change of design
+    look = { ...lookOf(FACADE_STYLES[facadeIdx]), clinkerColor: keepClinker };
     applyLook();
     if (announce) showToast(`Facade: ${FACADE_STYLES[facadeIdx].name}. ${FACADE_STYLES[facadeIdx].tag}`, 4000);
   };
@@ -459,6 +478,18 @@ async function main() {
   clk.onclick = () => { look.clinker = !look.clinker; applyLook(); };
   colBox.appendChild(clk);
   colourRows.clinker = { sync: () => { clk.classList.toggle('on', look.clinker); clk.textContent = `Clinker slips Cerrad Piatto Sand 30×7.4 (entrance + under kitchen window, optional on any design): ${look.clinker ? 'on' : 'off'}`; } };
+  // clinker colour: the Cerrad Piatto tones plus any colour (the entrance recess and under the kitchen window)
+  {
+    const row = document.createElement('div'); row.className = 'crow';
+    const lab = document.createElement('span'); lab.className = 'clab'; lab.textContent = 'Clinker colour'; row.appendChild(lab);
+    const setClinker = (c: string) => { look.clinkerColor = c; look.clinker = true; applyLook(); };
+    const sws = PAL_CLINKER.map((p) => {
+      const b = document.createElement('button'); b.className = 'cs'; b.title = `Piatto ${p.n}`; b.style.background = p.a; b.onclick = () => setClinker(p.a); row.appendChild(b); return { b, p };
+    });
+    const inp = document.createElement('input'); inp.type = 'color'; inp.title = 'Any colour'; inp.className = 'cpick'; inp.oninput = () => setClinker(inp.value); row.appendChild(inp);
+    colBox.appendChild(row);
+    colourRows.clinkerColour = { sync: () => { inp.value = clinkerPair(look.clinkerColor).a; for (const { b, p } of sws) b.classList.toggle('on', p.a.toLowerCase() === look.clinkerColor.toLowerCase()); } };
+  }
   $('ov-facade').onclick = () => setFacade(facadeIdx + 1);
   addEventListener('keydown', (e) => { if (e.code === 'KeyN' && !e.repeat) setFacade(facadeIdx + (e.shiftKey ? -1 : 1)); });
   try {
@@ -534,6 +565,7 @@ async function main() {
     timer.update();
     const dt = timer.getDelta();
     for (const d of hs.doors) d.update(dt);
+    tickSimClock();
     if (overview) {
       orbit.update();
     } else {

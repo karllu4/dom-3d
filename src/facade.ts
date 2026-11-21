@@ -15,7 +15,7 @@ export interface FacadeStyle {
   door: string;   // entrance door
   door2: string;  // back (terrace) door, anthracite like the roof by default
   layers: Layer[];
-  clinker?: boolean;   // Cerrad Piatto Sand slips at the entrance and under the kitchen window (CLINKER_LAYERS)
+  clinker?: boolean;   // Cerrad Piatto Sand slips at the entrance and under the kitchen window (clinkerLayers)
   dark?: boolean;
 }
 
@@ -181,12 +181,27 @@ export const FACADE_GLSL_BODY = /* glsl */ `
  * Cerrad Piatto Sand clinker facing (item 11306, 30 x 7.4 x 0.9 cm, sand/beige, hand-moulded look):
  * in the entrance recess round the door (back wall and its two returns, not the piers either side) and below the kitchen corner window (sill +0.88).
  */
-const SAND = { a: '#d6bf94', b: '#c3a677' };
-export const CLINKER_LAYERS: Layer[] = [
-  { span: 'all', zone: 'ground', kind: 'clinker', ...SAND, box: [4.38, 9.5, 6.52, 10.12] },   // only the recess round the door; the two front piers keep the facade colour
-  { span: 'all', zone: 'ground', kind: 'clinker', ...SAND, box: [-0.05, 9.5, 2.14, 9.66], z: [-1, 0.88] },
-  { span: 'all', zone: 'ground', kind: 'clinker', ...SAND, box: [-0.05, 8.15, 0.5, 9.66], z: [-1, 0.88] },
+/** Clinker colours of the Cerrad Piatto range (a = main tone, b = second tone mixed in per slip) plus the free picker. */
+export const PAL_CLINKER: { n: string; a: string; b: string }[] = [
+  { n: 'Sand', a: '#d6bf94', b: '#c3a677' }, { n: 'Honey', a: '#d9a94f', b: '#c4923a' }, { n: 'Terra', a: '#b5694a', b: '#9e553a' },
+  { n: 'Red', a: '#a8423a', b: '#8f3330' }, { n: 'Grey', a: '#a9a8a2', b: '#92918b' }, { n: 'Anthracite', a: '#4c4e52', b: '#3d3f43' },
 ];
+export const CLINKER_DEFAULT = PAL_CLINKER[0].a;
+/** second tone for a picked colour: the preset's own pair if it is one, else 12 % darker */
+export function clinkerPair(a: string): { a: string; b: string } {
+  const p = PAL_CLINKER.find((c) => c.a.toLowerCase() === a.toLowerCase());
+  if (p) return { a: p.a, b: p.b };
+  const c = new THREE.Color(a).multiplyScalar(0.88);
+  return { a, b: '#' + c.getHexString() };
+}
+export function clinkerLayers(a: string): Layer[] {
+  const col = clinkerPair(a);
+  return [
+    { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [4.38, 9.5, 6.52, 10.12] },   // only the recess round the door; the two front piers keep the facade colour
+    { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [-0.05, 9.5, 2.14, 9.66], z: [-1, 0.88] },
+    { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [-0.05, 8.15, 0.5, 9.66], z: [-1, 0.88] },
+  ];
+}
 
 // ---- colour pickers (menu): name, hex. Garage door also offers oak-grain decors.
 export type Swatch = { n: string; c: string; wood?: boolean };
