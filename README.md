@@ -56,7 +56,7 @@ Orientation (fitted on the geoportal orthophoto, `site` in the config): the entr
   Collar ties (jętki) 2×4×20 cm: J1 main roof underside +6.79, J2 west gable +6.59, east gable +6.55 (assumed).
   The roof plane is the underside of the rafters; membrane on the rafters, tiles `roof.thickness` (0.34 m) above.
 - Front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side follow the product photo on baranskidrzwi.pl. Opens/closes with `E`.
-- Juliet balconies on the 4 attic balcony doors built from `balkon_francuski/*.dxf` (posts, 3 rails, balusters, rings, RAL 7037).
+- Juliet balconies on the 4 attic balcony doors built from `balkon_francuski/*.dxf` (posts, 3 rails, balusters, rings, fixed anthracite, same as the roof tiles; facade designs do not change it).
 - One downstand beam between kitchen and dining (24 cm wide, underside +2.63 read from the plan label 311/263).
 - Garage door: Hörmann LPU 67 Thermo, L-ribbed, matt RAL 7016 anthracite (chosen, A); alternatives B oak Decograin, C flat RAL 5011 — `G` cycles, `E` opens.
 - Bays (east/west gables): walls rise to the bay roof only over the bay walls (`wallRect`, measured on Elewacje); the bay roof rakes overhang the main roof. Slots are closed only inside the house walls (bay side-wall triangles); `tools/gaps.mjs` checks for holes.

@@ -41,7 +41,7 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
   const overlays: Record<string, THREE.Mesh> = {};
   const doors: Openable[] = [];
   let garage: GarageDoor | undefined;
-  const julietMat = new THREE.MeshStandardMaterial({ color: h.julietColor ?? '#7a7c7b', roughness: 0.55, metalness: 0.3 }); // RAL 7037 powder coat
+  const julietMat = new THREE.MeshStandardMaterial({ color: h.julietColor ?? '#3e4145', roughness: 0.55, metalness: 0.3 }); // anthracite powder coat, same as the Braas Turmalin roof
 
   const footprints = Object.fromEntries(h.levels.map((l) => [l.id, l.footprint]));
   const insideLevel = (lv: string) => (x: number, y: number) => pointInPoly(x, y, footprints[lv]);
@@ -930,7 +930,7 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
     glass.castShadow = false;
     g.add(glass);
     g.add(part(s0 + F, s1 - F, o.sill + 0.1, o.sill + 0.42, plane - 0.02, plane + 0.02, col)); // bottom panel
-    // X glazing bars: two diagonals per cell, four cells stacked (as on the DB 107 sidelights)
+    // X glazing bars: two diagonals per cell, three cells stacked (as on the DB 107 sidelights)
     const diag = (sa: number, za: number, sb: number, zb: number) => {
       const ds = sb - sa, dz = zb - za, len = Math.hypot(ds, dz), th = 0.02;
       const sc = (sa + sb) / 2, zc = (za + zb) / 2;
@@ -939,7 +939,7 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
       else { m.rotation.x = Math.atan2(-dz, ds); m.position.set(plane, zc, sc); }
       g.add(m);
     };
-    const zlo = o.sill + 0.45, zhi = top - 0.02, rows = 4, rh = (zhi - zlo) / rows;
+    const zlo = o.sill + 0.45, zhi = top - 0.02, rows = 3, rh = (zhi - zlo) / rows;
     const sa = s0 + F, sb = s1 - F;
     for (let r = 0; r < rows; r++) { const za = zlo + r * rh, zb = za + rh; diag(sa, za, sb, zb); diag(sa, zb, sb, za); }
     const [ax, ay] = P(s0, plane - 0.05), [bx, by] = P(s1, plane + 0.05);

@@ -93,6 +93,21 @@ export class World {
     }
   }
 
+  /** True if nothing blocks the straight plan line (x0,y0)->(x1,y1) for a body of this height standing at `feet` (walls, closed doors). */
+  lineClear(x0: number, y0: number, x1: number, y1: number, feet: number, height: number): boolean {
+    const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.ceil(L / 0.15));
+    for (let i = 1; i < n; i++) {
+      const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
+      for (const s of this.solids) {
+        if (s.off || s.z1 <= feet + STEP_UP || s.z0 >= feet + height) continue;
+        const [bx0, by0, bx1, by1] = s.bbox;
+        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+        if (pointInRing(x, y, s.ring)) return false;
+      }
+    }
+    return true;
+  }
+
   /** True if the sloped roof is too low for a body standing at (x, y). */
   headBlocked(x: number, y: number, feet: number, height: number): boolean {
     const h = this.roofH(x, y);

@@ -44,7 +44,7 @@ export interface OpeningJ {
   panes?: number;
   span?: [number, number];
   catalog?: string;
-  juliet?: { opening: number; extend: number; dxf?: string };
+  juliet?: { opening: number; extend: number; dxf?: string; dxfNote?: string };
   garage?: { sections: number; variants: { name: string; color: string; ribs: number; wood: boolean }[] };
   door?: { model?: string; design?: string; color: string; colorName?: string; leaf: [number, number]; hinge: 'start' | 'end'; swing?: 'in' | 'out'; sidelight?: [number, number] };
 }
