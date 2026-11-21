@@ -33,6 +33,7 @@
         <div id="coords"></div>
       </div>
       <div class="crosshair"></div>
+      <div id="hurt"></div>
       <div id="hint" class="hidden"></div>
       <div id="toast" class="hidden"></div>
       <div id="measure-status" class="hidden"></div>
@@ -42,11 +43,13 @@
       <button id="sim-earlier" title="30 min earlier (-)">−30</button>
       <div><b id="sim-when"></b><span id="sim-where"></span></div>
       <button id="sim-later" title="30 min later (+)">+30</button>
+      <button id="sim-play"></button>
     </div>
 
     <div id="ov-tools">
       <button id="ov-roof">Roof</button>
       <button id="ov-attic">Attic</button>
+      <button id="ov-facade">Facade</button>
       <button id="ov-base">Strip to base level <kbd>B</kbd></button>
     </div>
 
@@ -79,13 +82,19 @@
           <span><kbd>L</kbd> room light · <kbd>L</kbd><kbd>L</kbd> whole floor</span>
           <span><kbd>K</kbd> light scene: all / evening / night / off</span>
           <span><kbd>+</kbd> / <kbd>-</kbd> sun time 30 min later / earlier</span>
+          <span><kbd>Y</kbd> pause / resume the clock (5 real min = 1 h)</span>
           <span><kbd>E</kbd> open/close door</span>
           <span><kbd>G</kbd> garage door design</span>
+          <span><kbd>N</kbd> next facade design · <kbd>Shift</kbd><kbd>N</kbd> previous</span>
           <span>mouse — look</span>
           <span><kbd>M</kbd> minimap</span>
           <span><kbd>T</kbd> tape measure (click 2 points, cm) · <kbd>0</kbd> to floor · <kbd>1</kbd>–<kbd>4</kbd> to nearest … fourth nearest wall</span>
           <span><kbd>Esc</kbd> this menu</span>
         </div>
+        <h2>Facade design <kbd>N</kbd></h2>
+        <div id="facades" class="toggles"></div>
+        <h3>Colours (change anything after picking a design)</h3>
+        <div id="colours"></div>
         <h2>Go to room</h2>
         <div id="rooms"></div>
       </div>

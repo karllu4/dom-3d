@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { facadeUniforms, FACADE_GLSL_DECL, FACADE_GLSL_BODY } from './facade';
 
 // Procedural textures (no external assets). UVs are in metres, so `size` = metres covered by one tile.
 
@@ -67,6 +68,51 @@ export function pbr(name: string, size: number | [number, number], extra: THREE.
   });
 }
 
+export const TILE_COVER_W = 0.24;           // Braas Turmalin mean cover width (m)
+export const TILE_GAUGE = 0.3675;           // middle of the 355-380 mm cover length (m)
+export const TILE_GAUGE_RANGE: [number, number] = [0.355, 0.38];
+
+/** Two courses x two tiles of Turmalin Anthrazit (canvas top = up-slope; the tile nose is the lower edge of each course). */
+function drawTiles(g: CanvasRenderingContext2D, px: number) {
+  noise(g, px, [62, 65, 69], 9, 31, 30);
+  const cw = px / 2, rh = px / 2;
+  const noseH = (0.03 / (TILE_GAUGE * 2)) * px;      // 30 mm tile thickness seen at the lower edge
+  for (let row = 0; row < 2; row++) {
+    const y0 = row * rh, y1 = y0 + rh;
+    for (let col = 0; col < 2; col++) {
+      const x0 = col * cw;
+      // flat face with a very slight tonal variation per tile (engobe)
+      g.fillStyle = `rgba(${col ^ row ? '255,255,255' : '0,0,0'},0.025)`;
+      g.fillRect(x0, y0, cw, rh);
+      const face = g.createLinearGradient(x0, 0, x0 + cw, 0);
+      face.addColorStop(0, 'rgba(0,0,0,0.08)');
+      face.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+      face.addColorStop(1, 'rgba(0,0,0,0.05)');
+      g.fillStyle = face;
+      g.fillRect(x0, y0, cw, rh);
+      // side joint (the 40 mm side lap is hidden under the neighbour): hairline dark gap + lit edge
+      g.fillStyle = 'rgba(0,0,0,0.6)';
+      g.fillRect(x0, y0, 2, rh);
+      g.fillStyle = 'rgba(255,255,255,0.07)';
+      g.fillRect(x0 + 2, y0, 2, rh);
+    }
+    // nose of the course: lit upper edge, 30 mm thick edge face, then the shadow it throws on the course below
+    g.fillStyle = 'rgba(255,255,255,0.13)';
+    g.fillRect(0, y1 - noseH, px, 3);
+    const nose = g.createLinearGradient(0, y1 - noseH + 3, 0, y1);
+    nose.addColorStop(0, 'rgba(0,0,0,0.12)');
+    nose.addColorStop(1, 'rgba(0,0,0,0.55)');
+    g.fillStyle = nose;
+    g.fillRect(0, y1 - noseH + 3, px, noseH - 3);
+    const ys = y1 % px;
+    const sh = g.createLinearGradient(0, ys, 0, ys + 24);
+    sh.addColorStop(0, 'rgba(0,0,0,0.65)');
+    sh.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = sh;
+    g.fillRect(0, ys, px, 24);
+  }
+}
+
 export function makeMaterials() {
   // current state outside: raw aerated-concrete blocks 59 x 24 cm (texture = 2 blocks x 2 courses)
   const facade = canvasTex(512, [1.2, 0.48], (g, px) => {
@@ -84,41 +130,12 @@ export function makeMaterials() {
       g.beginPath(); g.arc(r() * px, r() * px, 2 + r() * 10, 0, 7); g.fill();
     }
   });
-  // Braas Turmalin, anthracite, matt engobe: flat ceramic tile laid in straight columns.
-  // Texture = 2 tiles across (~0.30 m cover width each) x 2 rows (~0.33 m gauge). v runs up the slope.
-  const tiles = canvasTex(512, [0.6, 0.66], (g, px) => {
-    noise(g, px, [62, 65, 69], 9, 31, 30);
-    const cw = px / 2, rh = px / 2;
-    for (let row = 0; row < 2; row++) {
-      const y0 = row * rh, y1 = y0 + rh; // canvas top = up-slope; tile's lower (visible) edge at y1
-      for (let col = 0; col < 2; col++) {
-        const x0 = col * cw;
-        // gentle shading across the face (slightly raised centre)
-        const face = g.createLinearGradient(x0, 0, x0 + cw, 0);
-        face.addColorStop(0, 'rgba(0,0,0,0.10)');
-        face.addColorStop(0.5, 'rgba(255,255,255,0.03)');
-        face.addColorStop(1, 'rgba(0,0,0,0.06)');
-        g.fillStyle = face;
-        g.fillRect(x0, y0, cw, rh);
-        // side interlock: dark groove + light lip
-        g.fillStyle = 'rgba(0,0,0,0.55)';
-        g.fillRect(x0, y0, 3, rh);
-        g.fillStyle = 'rgba(255,255,255,0.08)';
-        g.fillRect(x0 + 3, y0, 3, rh);
-      }
-      // nose of the tile (lit edge) and the shadow it casts on the row below
-      g.fillStyle = 'rgba(255,255,255,0.12)';
-      g.fillRect(0, y1 - 8, px, 5);
-      const ys = y1 % px; // shadow starts at the top of the next row (wraps for the last row)
-      const sh = g.createLinearGradient(0, ys, 0, ys + 22);
-      sh.addColorStop(0, 'rgba(0,0,0,0.7)');
-      sh.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = sh;
-      g.fillRect(0, ys, px, 22);
-      g.fillStyle = 'rgba(0,0,0,0.7)';
-      g.fillRect(0, y1 - 3, px, 3);
-    }
-  });
+  // Braas Turmalin, Anthrazit, matt engobe (datasheet GD 356 DD, 03/2016): flat ceramic tile, 475 mm long, 240 mm cover width
+  // (tile width 280 mm incl. the 40 mm side lap), 25-30 mm thick, laid in straight columns (no stagger).
+  // Cover length (batten gauge) 355-380 mm, 11.0-11.7 tiles/m2, 4.4 kg each. Texture = 2 tiles across (0.48 m) x 2 courses;
+  // the course height is set per roof face (see tilesFor), so the courses divide the slope exactly like battens do.
+  const tiles = canvasTex(512, [TILE_COVER_W * 2, TILE_GAUGE * 2], (g, px) => drawTiles(g, px));
+  const tileImage = tiles.image as HTMLCanvasElement;
 
   // grey clinker brick (chimney): 25 x 6.5 cm bricks, 1 cm joints; texture = 0.52 x 0.30 m
   const clinker = canvasTex(256, [0.52, 0.3], (g, px) => {
@@ -166,7 +183,8 @@ export function makeMaterials() {
     slabConcrete: pbr('screed', 3.0, { emissive: 0x2a2a28, roughness: 0.95, side: THREE.DoubleSide }), // bare concrete slab soffit (terrace)
     plaster: pbr('plaster', 1.0, { roughness: 0.95 }, 0.35),      // white interior plaster: scanned relief, re-graded white
     ceiling: pbr('plaster', 1.0, { roughness: 0.95, side: THREE.DoubleSide }, 0.3),
-    facade: ringBeamBand(std({ map: facade, roughness: 0.95 })),
+    facade: facadeMaterial(facade),
+    makeFacade: (side: THREE.Side = THREE.FrontSide) => facadeMaterial(facade, side),
     wallTop: pbr('plaster', 1.0, { roughness: 0.95 }, 0.35), // caps: door/window soffits and wall tops
     grass: pbr('grass', 2.0, { roughness: 1 }),
     paving: pbr('paving', 1.8, { roughness: 0.9 }),
@@ -175,6 +193,14 @@ export function makeMaterials() {
     wool: std({ map: wool, roughness: 1, side: THREE.DoubleSide }),
     plasterboard: pbr('plaster', 1.2, { roughness: 0.92, color: 0xfbfaf6, side: THREE.DoubleSide }, 0.12),
     tiles: std({ map: tiles, roughness: 0.82, side: THREE.DoubleSide }), // matt engobe
+    /** Turmalin material for one roof face: `gauge` = course height (m), `u0`/`v0` anchor the grid at the verge and the eave. */
+    tilesFor: (gauge: number, u0: number, v0: number) => {
+      const t = new THREE.CanvasTexture(tileImage);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
+      t.repeat.set(1 / (TILE_COVER_W * 2), 1 / (gauge * 2));
+      t.offset.set(-u0 / (TILE_COVER_W * 2), -v0 / (gauge * 2));
+      return std({ map: t, roughness: 0.82, side: THREE.DoubleSide });
+    },
     fascia: std({ color: 0x33363a, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide }), // anthracite roof flashing (verge / eaves)
     frameCaramel: std({ map: winchester, roughness: 0.5 }), // Winchester XA 49240 wood decor (all WIKĘD windows and HS doors)
     frameBlack: std({ color: 0x1d1d1f, roughness: 0.5 }),
@@ -204,18 +230,22 @@ export function clipAboveRoof<T extends THREE.Material>(mat: T, glslRoofH: strin
   return m;
 }
 
-/** Grey concrete band on the façade where the ring beams / floor slab are (as on the site photos). */
-function ringBeamBand<T extends THREE.Material>(m: T, z0 = 2.86, z1 = 3.34): T {
+/**
+ * Outer wall surface. Mode 0 keeps the raw-block texture with the grey ring-beam band (photos of the site);
+ * mode 1 paints the selected facade design (plaster / cladding / plinth) from the shared uniforms in facade.ts.
+ */
+function facadeMaterial(map: THREE.Texture, side: THREE.Side = THREE.FrontSide): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ map, roughness: 0.95, side });
   m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, facadeUniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBandWP;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvBandWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFacWP;\nvarying vec3 vFacN;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvFacWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvFacN = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBandWP;')
-      .replace('#include <map_fragment>', `#include <map_fragment>
-  if (vBandWP.y > ${z0.toFixed(3)} && vBandWP.y < ${z1.toFixed(3)}) diffuseColor.rgb = vec3(0.56, 0.56, 0.54) * (0.9 + 0.2 * diffuseColor.r);`);
+      .replace('#include <common>', `#include <common>\n${FACADE_GLSL_DECL}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>\n${FACADE_GLSL_BODY}`);
   };
-  m.customProgramCacheKey = () => 'ringbeam';
+  m.customProgramCacheKey = () => 'facade-v2';
   return m;
 }
 

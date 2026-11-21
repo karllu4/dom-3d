@@ -8,6 +8,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
+import { Zombie, ZOMBIE_ROUTE } from './zombie';
+import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, clinkerLayers, clinkerPair, CLINKER_DEFAULT, PAL_CLINKER } from './facade';
+import type { FacadeStyle, Layer, Swatch } from './facade';
 import { buildHouse } from './house';
 import { Player } from './player';
 import { Minimap, roomAt, levelForFeet } from './hud';
@@ -116,8 +119,10 @@ async function main() {
   scene.add(sun, sun.target);
   let sunBase = 1.7;
   const sunState = { month: new Date().getMonth() + 1, hour: 13 };
+  let sunElev = 30;                                   // degrees above the horizon (the zombie walks only after dark)
   const applySun = () => {
     const sp = sunPosition(site.lat, site.lon, sunState.month, 15, sunState.hour);
+    sunElev = sp.elevation;
     sunDir.copy(bearingToWorld(sp.azimuth, Math.max(sp.elevation, -4), site.planDownBearingDeg));
     su.sunPosition.value.copy(sunDir);
     sun.position.copy(center).addScaledVector(sunDir, 30);
@@ -143,6 +148,24 @@ async function main() {
     (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour);
     applySun();
   };
+  // the simulated clock runs by itself: 5 real minutes = 1 hour (Y pauses / resumes, +/- and the slider still jump)
+  const SIM_HOURS_PER_SEC = 1 / 300;
+  let simRunning = true, simAcc = 0;
+  const syncPlay = () => { const b = $('sim-play'); b.textContent = simRunning ? '⏸' : '▶'; b.title = simRunning ? 'Time runs: 5 real minutes = 1 hour. Click or press Y to pause' : 'Time paused. Click or press Y to resume (5 real minutes = 1 hour)'; };
+  const toggleSimClock = () => { simRunning = !simRunning; syncPlay(); showToast(simRunning ? 'Time runs: 5 real minutes = 1 hour' : 'Time paused', 2000); };
+  $('sim-play').onclick = toggleSimClock;
+  addEventListener('keydown', (e) => { if (e.code === 'KeyY' && !e.repeat) toggleSimClock(); });
+  let lastWall = performance.now();
+  const tickSimClock = () => {
+    const now = performance.now(), real = Math.min((now - lastWall) / 1000, 10);   // real seconds since the last frame (a hidden tab does not skip the day)
+    lastWall = now;
+    if (!simRunning) return;
+    sunState.hour += real * SIM_HOURS_PER_SEC;
+    if (sunState.hour > 23.5) sunState.hour = 5;                         // next morning (the slider covers 05:00-23:30)
+    simAcc += real;
+    if (simAcc >= 3) { simAcc = 0; (document.getElementById('sun-hour') as HTMLInputElement).value = String(sunState.hour); applySun(); }   // sun / sky refresh every 3 s (0.6 min of sim time)
+  };
+  syncPlay();
   $('sim-later').onclick = () => stepTime(0.5);
   $('sim-earlier').onclick = () => stepTime(-0.5);
   // Sunlight does not bounce in a rasterizer, so interiors get a soft, nearly neutral fill:
@@ -185,6 +208,8 @@ async function main() {
   // ---------- player & overview
   const player = new Player(camera, renderer.domElement, hs.world);
   player.teleport(house.spawn.x, house.spawn.y, house.outside.groundZ, house.spawn.yawDeg);
+  const zombie = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world);
+  scene.add(zombie.group);
 
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(7, 2, 6.5);
@@ -272,6 +297,38 @@ async function main() {
       if (d !== null) toast(`Distance: ${(d * 100).toFixed(1)} cm`);
     }
   });
+  // ---------- zombie: light beam (left click) and getting caught (red screen, wake up in bed)
+  const hurt = $('hurt');
+  let hurtT = 0, shotCd = 0, beamT = 0;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.14, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
+  beam.visible = false; beam.frustumCulled = false; scene.add(beam);
+  const flash = new THREE.PointLight(0xfff2c0, 0, 12, 1.5); scene.add(flash);
+  const shoot = () => {
+    if (shotCd > 0) return;
+    shotCd = 0.45; beamT = 0.14;
+    const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    const origin = camera.position.clone();
+    const hit = zombie.hit(origin, dir, 15, 0.12);
+    if (hit) { zombie.ignite(); toast('Direct hit — it burns!'); }
+    const len = hit ? origin.distanceTo(new THREE.Vector3(zombie.group.position.x, zombie.group.position.y + 1, zombie.group.position.z)) : 9;
+    const right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+    const start = origin.clone().addScaledVector(dir, 0.4).addScaledVector(right, 0.18).add(new THREE.Vector3(0, -0.15, 0));
+    beam.position.copy(start).addScaledVector(dir, len / 2);
+    beam.scale.set(1, len, 1);
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    beam.visible = true;
+    flash.position.copy(origin).addScaledVector(dir, 1.2); flash.intensity = 40;
+  };
+  document.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !tape.active && player.controls.isLocked && !overview) shoot();
+  });
+  const caughtByZombie = () => {
+    hurtT = 1.2; hurt.style.opacity = '0.85';
+    player.crouch = false;
+    player.teleport(2.3, 3.6, 3.34, 180);          // wake up at the foot of the bed
+    zombie.reset(new THREE.Vector3(2.3, 0, 3.6));
+    toast('The zombie got you… you wake up in bed');
+  };
   const toggleRoomLight = () => {
     const { label } = roomAt(house, player.pos.x, player.pos.y, player.feet);
     if (!label) { toast('Not inside a room'); return; }
@@ -388,6 +445,97 @@ async function main() {
       showToast(`Garage door: ${hs.garage.label}`, 3500);
     }
   });
+  // ---------- facade designs (facade.ts): a style fills in a "look"; every colour in it can then be overridden by hand
+  interface Look { clinker: boolean; clinkerColor: string; styleId: string; raw: boolean; wall: string; plinth: string; gate: { color: string; wood: boolean }; door: string; door2: string; layers: Layer[] }
+  const lookOf = (st: FacadeStyle): Look => ({ clinker: !!st.clinker, clinkerColor: CLINKER_DEFAULT, styleId: st.id, raw: st.id === 'raw', wall: st.wall, plinth: st.plinth, gate: { ...st.gate }, door: st.door, door2: st.door2, layers: st.layers });
+  let facadeIdx = 0;
+  let look = lookOf(FACADE_STYLES[0]);
+  const facadeBtns: HTMLButtonElement[] = [];
+  const colourRows: Record<string, { sync: () => void }> = {};
+  const doorById = (id: string) => hs.doors.find((d) => (d as { id?: string }).id === id) as { recolor: (hex: string) => void } | undefined;
+  const applyLook = () => {
+    applyFacadeUniforms({ id: look.raw ? 'raw' : 'x', wall: look.wall, plinth: look.plinth, layers: [...look.layers, ...(look.clinker ? clinkerLayers(look.clinkerColor) : [])] });
+    hs.garage?.setLook(look.gate.color, look.gate.wood);
+    doorById('Dz1')?.recolor(look.door);
+    doorById('Dz2')?.recolor(look.door2);
+    const st = FACADE_STYLES[facadeIdx];
+    const custom = look.styleId === 'custom';
+    facadeBtns.forEach((b, j) => b.classList.toggle('on', !custom && j === facadeIdx));
+    $('ov-facade').textContent = `Facade: ${custom ? st.name + ' (modified)' : st.name}`;
+    for (const r of Object.values(colourRows)) r.sync();
+    try { localStorage.setItem('facadeLook', JSON.stringify({ id: FACADE_STYLES[facadeIdx].id, look })); } catch { /* private mode */ }
+  };
+  const setFacade = (i: number, announce = true) => {
+    facadeIdx = ((i % FACADE_STYLES.length) + FACADE_STYLES.length) % FACADE_STYLES.length;
+    const keepClinker = look.clinkerColor;                 // a picked clinker colour survives a change of design
+    look = { ...lookOf(FACADE_STYLES[facadeIdx]), clinkerColor: keepClinker };
+    applyLook();
+    if (announce) showToast(`Facade: ${FACADE_STYLES[facadeIdx].name}. ${FACADE_STYLES[facadeIdx].tag}`, 4000);
+  };
+  const facadeBox = $('facades');
+  FACADE_STYLES.forEach((st, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="sw" style="background:${st.wall}"></span><span class="sw" style="background:${st.layers[0]?.a ?? st.plinth}"></span>${st.name}`;
+    b.title = st.tag;
+    b.onclick = () => setFacade(i);
+    facadeBtns.push(b); facadeBox.appendChild(b);
+  });
+  // colour rows: preset swatches + free picker, for each part
+  const rows: { key: 'wall' | 'plinth' | 'gate' | 'door' | 'door2'; label: string; pal: Swatch[] }[] = [
+    { key: 'wall', label: 'Walls', pal: PAL_WALL }, { key: 'plinth', label: 'Plinth', pal: PAL_WALL },
+    { key: 'gate', label: 'Garage door', pal: PAL_GATE },
+    { key: 'door', label: 'Entrance door', pal: PAL_DOOR }, { key: 'door2', label: 'Back door', pal: PAL_DOOR },
+  ];
+  const colBox = $('colours');
+  for (const r of rows) {
+    const row = document.createElement('div'); row.className = 'crow';
+    const lab = document.createElement('span'); lab.className = 'clab'; lab.textContent = r.label; row.appendChild(lab);
+    const cur = () => (r.key === 'gate' ? look.gate.color : look[r.key]);
+    const set = (c: string, wood = false) => {
+      if (r.key === 'gate') look.gate = { color: c, wood }; else look[r.key] = c;
+      if (r.key === 'wall' || r.key === 'plinth') look.raw = false;   // plastered / painted walls instead of raw blocks
+      look.styleId = 'custom'; applyLook();
+    };
+    const sws = r.pal.map((p) => {
+      const b = document.createElement('button'); b.className = 'cs'; b.title = p.n + (p.wood ? '' : ''); b.style.background = p.c;
+      if (p.wood) b.classList.add('wood');
+      b.onclick = () => set(p.c, !!p.wood); row.appendChild(b); return { b, p };
+    });
+    const inp = document.createElement('input'); inp.type = 'color'; inp.title = 'Any colour'; inp.className = 'cpick';
+    inp.oninput = () => set(inp.value, false); row.appendChild(inp);
+    colBox.appendChild(row);
+    colourRows[r.key] = { sync: () => {
+      const c = cur().toLowerCase(); inp.value = c;
+      for (const { b, p } of sws) b.classList.toggle('on', p.c.toLowerCase() === c && !!p.wood === (r.key === 'gate' ? look.gate.wood : false));
+    } };
+  }
+  // clinker facing (Cerrad Piatto Sand) at the entrance and under the kitchen window: on top of any design
+  const clk = document.createElement('button');
+  clk.className = 'clinker-toggle';
+  clk.onclick = () => { look.clinker = !look.clinker; applyLook(); };
+  colBox.appendChild(clk);
+  colourRows.clinker = { sync: () => { clk.classList.toggle('on', look.clinker); clk.textContent = `Clinker slips Cerrad Piatto Sand 30×7.4 (entrance + under kitchen window, optional on any design): ${look.clinker ? 'on' : 'off'}`; } };
+  // clinker colour: the Cerrad Piatto tones plus any colour (the entrance recess and under the kitchen window)
+  {
+    const row = document.createElement('div'); row.className = 'crow';
+    const lab = document.createElement('span'); lab.className = 'clab'; lab.textContent = 'Clinker colour'; row.appendChild(lab);
+    const setClinker = (c: string) => { look.clinkerColor = c; look.clinker = true; applyLook(); };
+    const sws = PAL_CLINKER.map((p) => {
+      const b = document.createElement('button'); b.className = 'cs'; b.title = `Piatto ${p.n}`; b.style.background = p.a; b.onclick = () => setClinker(p.a); row.appendChild(b); return { b, p };
+    });
+    const inp = document.createElement('input'); inp.type = 'color'; inp.title = 'Any colour'; inp.className = 'cpick'; inp.oninput = () => setClinker(inp.value); row.appendChild(inp);
+    colBox.appendChild(row);
+    colourRows.clinkerColour = { sync: () => { inp.value = clinkerPair(look.clinkerColor).a; for (const { b, p } of sws) b.classList.toggle('on', p.a.toLowerCase() === look.clinkerColor.toLowerCase()); } };
+  }
+  $('ov-facade').onclick = () => setFacade(facadeIdx + 1);
+  addEventListener('keydown', (e) => { if (e.code === 'KeyN' && !e.repeat) setFacade(facadeIdx + (e.shiftKey ? -1 : 1)); });
+  try {
+    const saved = JSON.parse(localStorage.getItem('facadeLook') ?? 'null');
+    const savedIdx = FACADE_STYLES.findIndex((f) => f.id === saved?.id);   // a design that was removed is simply forgotten
+    if (saved?.look && savedIdx >= 0) { facadeIdx = savedIdx; /* clinker always starts from the design's own setting */ const { roof: _r, clinker: _c, ...keep } = saved.look; look = { ...lookOf(FACADE_STYLES[facadeIdx]), ...keep }; }
+  } catch { /* ignore */ }
+  applyLook();
+
   syncToggles();
 
   $('start').onclick = () => {
@@ -400,7 +548,7 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
+  Object.assign(window, { dom3d: { zombie, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -454,6 +602,12 @@ async function main() {
     timer.update();
     const dt = timer.getDelta();
     for (const d of hs.doors) d.update(dt);
+    tickSimClock();
+    zombie.update(dt, sunElev < -4, camera.position);
+    shotCd -= dt;
+    if (beamT > 0) { beamT -= dt; if (beamT <= 0) { beam.visible = false; flash.intensity = 0; } else (beam.material as THREE.MeshBasicMaterial).opacity = 0.7 * (beamT / 0.14); }
+    if (hurtT > 0) { hurtT -= dt; hurt.style.opacity = String(Math.max(0, Math.min(0.85, hurtT / 1.2 * 0.85))); }
+    if (!overview && zombie.caught) caughtByZombie();
     if (overview) {
       orbit.update();
     } else {

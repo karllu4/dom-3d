@@ -44,7 +44,7 @@ export interface OpeningJ {
   panes?: number;
   span?: [number, number];
   catalog?: string;
-  juliet?: { opening: number; extend: number; dxf?: string };
+  juliet?: { opening: number; extend: number; dxf?: string; dxfNote?: string };
   garage?: { sections: number; variants: { name: string; color: string; ribs: number; wood: boolean }[] };
   door?: { model?: string; design?: string; color: string; colorName?: string; leaf: [number, number]; hinge: 'start' | 'end'; swing?: 'in' | 'out'; sidelight?: [number, number] };
 }
@@ -86,7 +86,7 @@ export interface HouseJ {
   julietColor?: string;
   soffits?: PolyJ[];
   site?: { lat: number; lon: number; planDownBearingDeg: number };
-  furniture?: { type: string; rect?: Rect; at?: Pt; rot?: number; h?: number; z?: number; axis?: 'x' | 'y'; open?: boolean; head?: 'x0' | 'x1' | 'y0' | 'y1'; wall?: 'x0' | 'x1' | 'y0' | 'y1'; monitor?: boolean; sinks?: number; sink?: Pt; hob?: Pt; hood?: boolean; fridge?: boolean; tv?: boolean; front?: 'x0' | 'x1' | 'y0' | 'y1'; builtin?: boolean; slant?: boolean; corner?: 'x0y0' | 'x1y0' | 'x0y1' | 'x1y1'; fill?: 'books' | 'clothes' | 'none'; chaise?: 'x0' | 'x1' }[];
+  furniture?: { type: string; rect?: Rect; at?: Pt; rot?: number; h?: number; z?: number; axis?: 'x' | 'y'; open?: boolean; head?: 'x0' | 'x1' | 'y0' | 'y1'; wall?: 'x0' | 'x1' | 'y0' | 'y1'; monitor?: boolean; sinks?: number; sink?: Pt; hob?: Pt; hood?: boolean; fridge?: boolean; tv?: boolean; front?: 'x0' | 'x1' | 'y0' | 'y1'; builtin?: boolean; slant?: boolean; corner?: 'x0y0' | 'x1y0' | 'x0y1' | 'x1y1'; fill?: 'books' | 'clothes' | 'none'; chaise?: 'x0' | 'x1'; wardrobeWidth?: number }[];
   hvac?: { type: 'cassette'; level: string; at: Pt; panel: number; body: [number, number]; model?: string }[];
   lighting?: { id: string; level: string; floorZ: number; ceilZ: number | null; area: number; center: Pt;
     lamps?: Pt[]; downlights?: Pt[]; battens?: [number, number, number, number][]; cove: Pt[][];

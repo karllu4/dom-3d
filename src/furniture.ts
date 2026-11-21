@@ -6,6 +6,7 @@ import { makeRoofHeight } from './roof';
 import { pointInPoly } from './geometry';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { pbr } from './materials';
+import { buildMacaw } from './parrot';
 
 /**
  * Interior design v1: simple, clean furniture models built from boxes/cylinders (toggle with F).
@@ -325,6 +326,48 @@ export function buildFurniture(h: HouseJ, world: World): Record<string, THREE.Gr
         }
         else for (let zz = 0.35; zz < H; zz += 0.4) box(x0 + 0.02, y0 + 0.02, zz, x1 - 0.02, y1 - 0.02, zz + 0.02, white);  // open shelves
         block(r!, lowTop);
+        break;
+      }
+      case 'parrotwardrobe': {        // wardrobe (left part) + macaw aviary niche with a cabinet base (right part); front on the y0 side
+        const [x0, y0, x1, y1] = r!; const H = f.h ?? 2.2, Ww = f.wardrobeWidth ?? 0.9, t = 0.02, Bh = 0.75;
+        const xs = x0 + Ww, cxm = (xs + x1) / 2;
+        const strip = (a0: number, a1: number, za: number, zb: number, m = anth) => box(a0, y0 - 0.002, za, a1, y0 + 0.004, zb, m);
+        // wardrobe part: two doors, bar handles at the meeting gap
+        box(x0, y0, 0, xs, y1, H, white);
+        strip(x0 + Ww / 2 - 0.003, x0 + Ww / 2 + 0.003, 0.05, H - 0.05);
+        strip(x0 + Ww / 2 - 0.05, x0 + Ww / 2 - 0.035, 0.95, 1.35, steel); strip(x0 + Ww / 2 + 0.035, x0 + Ww / 2 + 0.05, 0.95, 1.35, steel);
+        // cabinet base under the cage: two doors (feed, toys)
+        box(xs, y0, 0, x1, y1, Bh, white);
+        strip(cxm - 0.003, cxm + 0.003, 0.05, Bh - 0.03);
+        strip(cxm - 0.05, cxm - 0.035, 0.55, 0.7, steel); strip(cxm + 0.035, cxm + 0.05, 0.55, 0.7, steel);
+        // niche: right side, back (oak), ceiling of the niche, floor with a pull-out tray
+        box(x1 - t, y0, Bh, x1, y1, H, white);
+        box(xs, y1 - t, Bh, x1, y1, H, oak);
+        box(xs, y0, H - 0.04, x1, y1, H, white);
+        box(xs, y0, Bh, x1, y1, Bh + 0.03, white);
+        box(xs + 0.03, y0 + 0.03, Bh + 0.03, x1 - t - 0.01, y1 - t - 0.01, Bh + 0.05, M(0xb9bcc0, 0.35, 0.7));
+        // bars on the front plane: 4 mm rods every 2.2 cm, framed top, middle and bottom, with a door latch
+        const barM = M(0x2c2f33, 0.35, 0.6), by = y0 + 0.012;
+        const zb0 = Bh + 0.05, zb1 = H - 0.04;
+        for (let xx = xs + 0.03; xx <= x1 - t - 0.02; xx += 0.022) cyl(xx, by, zb0, zb1, 0.0035, barM, 6);
+        for (const zz of [zb0, 1.55, zb1 - 0.02]) box(xs, by - 0.008, zz, x1 - t, by + 0.008, zz + 0.02, barM);
+        box(xs + 0.16, by - 0.012, zb0, xs + 0.18, by + 0.012, 1.55, barM); box(x1 - t - 0.18, by - 0.012, zb0, x1 - t - 0.16, by + 0.012, 1.55, barM);   // door frame (lower door)
+        box(cxm - 0.015, by - 0.02, 1.0, cxm + 0.015, by, 1.06, steel);                                       // latch
+        // inside: two oak perches, rope swing, food bowls, toy
+        const hbar = (xa: number, xb: number, yy: number, zz: number, rr: number, m: THREE.Material) => {
+          const c = new THREE.Mesh(new THREE.CylinderGeometry(rr, rr, xb - xa, 14), m); c.rotation.z = Math.PI / 2; c.position.set((xa + xb) / 2, zz, yy); c.castShadow = true; g.add(c); return c;
+        };
+        const py = y0 + 0.27, perchZ = 1.5;
+        hbar(xs + 0.03, x1 - t - 0.01, py, perchZ, 0.025, wood2);   // natural branch perch, 5 cm
+        hbar(xs + 0.03, x1 - t - 0.01, py + 0.14, 1.12, 0.017, wood2);
+        cyl(cxm + 0.22, py - 0.02, perchZ + 0.01, H - 0.05, 0.004, steel, 6);                                   // swing hanger
+        hbar(cxm + 0.19, cxm + 0.25, py - 0.02, perchZ + 0.01, 0.006, M(0xb48a56, 0.9));
+        for (const dx of [-0.2, 0.0]) cyl(xs + 0.28 + dx + 0.3, y0 + 0.14, Bh + 0.05, Bh + 0.1, 0.05, steel, 16);   // two food bowls
+        // the macaw (parrot.ts): perched on the upper perch, facing out (towards -y)
+        const bird = buildMacaw();
+        bird.position.set(cxm - 0.06, perchZ + 0.025, py); bird.rotation.y = Math.PI;
+        g.add(bird);
+        block(r!, H);
         break;
       }
       case 'bookcase': {              // open oak bookcase: sides, back, shelves, rows of books; open on the `front` side

@@ -65,7 +65,7 @@
     { "id": "D5-1/6", "level": "parter", "kind": "door", "rect": [12.511, 3.929, 13.408, 4.17], "sill": 0.0, "head": 2.05 },
     { "id": "D1",     "level": "parter", "kind": "door", "rect": [4.988, 6.367, 5.992, 6.608], "sill": 0.0, "head": 2.05 },
 
-    { "id": "OB3", "level": "poddasze", "kind": "balcony", "rect": [5.052, -0.004, 7.05, 0.436], "sill": 3.34, "head": 5.907, "frame": "caramel", "panes": 2, "catalog": "#11 1975x2475(+46+46)", "juliet": { "opening": 1.880, "extend": 0.160, "dxf": "Juliet_balcony_west_extra_circle.dxf" } },
+    { "id": "OB3", "level": "poddasze", "kind": "balcony", "rect": [5.052, -0.004, 7.05, 0.436], "sill": 3.34, "head": 5.907, "frame": "caramel", "panes": 2, "catalog": "#11 1975x2475(+46+46)", "juliet": { "opening": 1.975, "extend": 0.1785, "dxf": "Juliet_balcony_west_extra_circle.dxf", "dxfNote": "DXF is drawn for a 1880 opening; the ordered window #11 is 1975 wide (17 rings, 16 balusters, post-to-post 2332)" } },
     { "id": "OB2", "level": "poddasze", "kind": "balcony", "rect": [0.0, 4.297, 0.442, 5.897], "sill": 3.34, "head": 5.887, "frame": "caramel", "panes": 2, "catalog": "#9 1560x2455(+46+46)", "juliet": { "opening": 1.560, "extend": 0.122, "dxf": "Juliet_balcony_south.dxf" } },
     { "id": "06a", "level": "poddasze", "kind": "window", "rect": [0.0, 2.646, 0.442, 3.548], "sill": 4.14, "head": 5.94, "frame": "caramel", "panes": 1, "catalog": "#8 860x1770(+30)" },
     { "id": "06b", "level": "poddasze", "kind": "window", "rect": [0.0, 6.646, 0.442, 7.548], "sill": 4.14, "head": 5.94, "frame": "caramel", "panes": 1, "catalog": "#10 860x1770(+30)" },
@@ -81,7 +81,7 @@
   ],
 
   "_juliet": "Juliet balconies per balkon_francuski/*.dxf (mm): posts RHS 50x50 at both ends (outer faces = opening + 2*extend), rails RHS 40x40 at 50-90 / 900-940 / 1060-1100 above finished floor, balusters 12x12 at 132 c/c, rings OD120/ID96 between the two top rails alternating with balusters, 60 mm off the facade on 4 arms RHS 60x40 at 250 and 900, RAL 7037.",
-  "julietColor": "#7a7c7b",
+  "julietColor": "#3e4145",
 
   "_beams": "Downstand beams visible below the ceiling (dashed on the plan). Kitchen/dining beam: 24 cm wide, underside +2.63 (plan label 311/263).",
   "beams": [
@@ -157,7 +157,7 @@
       "1/2": {"style": "none", "downlightsAt": [[6.2, 4.75], [6.86, 4.75], [7.52, 4.75], [8.18, 4.75], [8.84, 4.75], [9.5, 4.75]], "stairLights": true,
               "lowLights": [[8.3, 4.17, 0]]},
       "1/1": {"style": "none", "lampsAt": [[5.8, 7.9]], "wallLamps": [[7.2, 8.55, 1.7, -90], [4.6, 9.597, 1.75, 0], [6.85, 9.597, 1.75, 0]]},
-      "1/5": {"style": "ceiling", "lamps": 1, "floorLamps": [[10.7, 3.45]]},
+      "1/5": {"style": "ceiling", "lamps": 1},
       "1/6": {"style": "battens", "cct": 4000},
       "1/7": {"style": "ceiling", "lamps": 1, "cct": 4000},
       "1/8": {"style": "none", "downlightsAt": [[10.4, 5.15], [11.35, 5.15], [10.9, 5.9]], "wallStrip": [10.25, 4.19, 11.15, 4.19, 2.1], "cct": 3500,
@@ -222,6 +222,13 @@
     {"type": "armchair", "at": [10.5, 10.85], "z": 2.99, "rot": 180},
     {"type": "coffee", "rect": [10.0, 8.75, 10.7, 9.85], "z": 2.99, "h": 0.4},
     {"type": "bookcase", "rect": [1.718, 6.3, 2.338, 8.6], "z": 3.34, "h": 2.0, "front": "x0", "fill": "clothes"},
+    {"type": "rug", "rect": [8.2, 1.5, 10.5, 3.0], "z": 0},
+    {"type": "desk", "rect": [8.019, 1.037, 8.669, 2.25], "z": 0, "wall": "x0", "monitor": true},
+    {"type": "desk", "rect": [8.669, 1.037, 9.45, 1.687], "z": 0},
+    {"type": "chair", "at": [9.1, 1.7], "z": 0, "rot": -90},
+    {"type": "armchair", "at": [8.45, 3.5], "z": 0, "rot": 90},
+    {"type": "sofa", "rect": [10.289, 1.1, 11.139, 2.7], "z": 0, "rot": -90},
+    {"type": "bookcase", "rect": [10.789, 2.78, 11.139, 3.929], "z": 0, "h": 2.6, "front": "x0"},
     {"type": "vanity", "rect": [10.25, 4.17, 11.15, 4.65], "z": 0, "sinks": 1, "wall": "y0"},
     {"type": "wc", "at": [11.458, 4.97], "z": 0, "rot": -90},
     {"type": "shower", "rect": [10.74, 5.367, 11.838, 6.367], "z": 0, "wall": "y1"},
@@ -237,6 +244,7 @@
     {"type": "desk", "rect": [4.205, 0.5, 4.85, 1.9], "z": 3.34, "wall": "x0", "monitor": true},
     {"type": "chair", "at": [5.2, 1.2], "z": 3.34, "rot": -90},
     {"type": "wardrobe", "rect": [4.205, 3.447, 5.52, 4.047], "z": 3.34, "h": 2.2, "front": "y0"},
+    {"type": "parrotwardrobe", "rect": [7.05, 3.447, 8.752, 4.047], "z": 3.34, "h": 2.2, "front": "y0", "wardrobeWidth": 0.9},
         {"type": "rug", "rect": [5.5, 1.6, 7.3, 3.3], "z": 3.34},
     {"type": "bed", "rect": [2.48, 7.15, 3.38, 9.15], "z": 3.34, "head": "y1"},
     {"type": "nightstand", "at": [3.63, 8.92], "z": 3.34},
