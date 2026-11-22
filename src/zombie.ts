@@ -17,29 +17,34 @@ export class Zombie {
   private groundZ: number;
   private route: [number, number][];
   private world: World;
-  private mode: 'patrol' | 'chase' | 'flee' = 'patrol';
+  private mode: 'patrol' | 'chase' | 'flee' | 'dying' = 'patrol';
   private modeT = 0;          // time left in flee / time since the player was last seen while chasing
   private lost = 0;
   private flames: { m: THREE.Mesh; life: number; max: number }[] = [];
-  private fire: THREE.PointLight;
+  hp = 5;                   // light hits needed
+  dead = false;             // flown away: remove it from the scene
+  private quail!: THREE.Group; private wingL!: THREE.Object3D; private wingR!: THREE.Object3D;
+  private root!: THREE.Group;
+  private dieT = 0;
   private fireMat = new THREE.MeshBasicMaterial({ color: 0xff8a1f, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   private fireMat2 = new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   /** set while the zombie is close enough to grab the player */
   caught = false;
   private groundNow = 0;
 
-  constructor(groundZ: number, route: [number, number][], world: World) {
+  constructor(groundZ: number, route: [number, number][], world: World, startAt = 0) {
     this.groundZ = groundZ;
     this.world = world;
     this.route = route;
     this.group.name = 'zombie';
     const M = (c: number, rough = 0.85, emissive = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, emissive, emissiveIntensity: emissive ? 1.6 : 0 });
-    const skin = M(0x8fa67c), skinDark = M(0x6f8760), shirt = M(0x3f6f73), shirtDark = M(0x2f5558), trousers = M(0x4a463f), bone = M(0xe4dcc8, 0.6), hair = M(0x2a2420), mouth = M(0x1c1210), bandage = M(0xd9d2bf, 0.9);
+    const dim = (c: number) => { const m = M(c); m.emissive.set(0x1c2c16); m.emissiveIntensity = 1; return m; };
+    const skin = dim(0x8fa67c), skinDark = dim(0x6f8760), shirt = dim(0x3f6f73), shirtDark = dim(0x2f5558), trousers = M(0x4a463f), bone = M(0xe4dcc8, 0.6), hair = M(0x2a2420), mouth = M(0x1c1210), bandage = M(0xd9d2bf, 0.9);
     const eyeA = M(0x111111, 0.4, 0xd8ff6a), eyeB = M(0x111111, 0.4, 0xd8ff6a);
     const box = (parent: THREE.Object3D, w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => {
       const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; parent.add(o); return o;
     };
-    const root = new THREE.Group(); this.group.add(root);
+    const root = new THREE.Group(); this.group.add(root); this.root = root;
     // legs (pivot at the hip, y = 0.74)
     const leg = (x: number) => {
       const p = new THREE.Group(); p.position.set(x, 0.74, 0); root.add(p);
@@ -79,19 +84,18 @@ export class Zombie {
     };
     this.armL = arm(-0.34, 0.1); this.armR = arm(0.34, -0.05);
     this.body = body;
-    // eerie green glow, so it can be seen on a dark night
-    const glow = new THREE.PointLight(0x9cff7a, 3.2, 7, 1.6); glow.position.set(0, 1.3, 0.5); this.group.add(glow);
-    this.fire = new THREE.PointLight(0xff7a1a, 0, 9, 1.6); this.fire.position.set(0, 1.1, 0); this.group.add(this.fire);
+    // no point lights per zombie (many lights make every material slower): faint emissive skin lets it be seen on a dark night
+    this.buildQuail();
     const fg = new THREE.BoxGeometry(0.16, 0.16, 0.16);
     for (let i = 0; i < 26; i++) { const m = new THREE.Mesh(fg, i % 3 ? this.fireMat : this.fireMat2); m.visible = false; this.group.add(m); this.flames.push({ m, life: 0, max: 1 }); }
     this.group.visible = false;
     // start somewhere on the loop
-    this.wp = 0; this.group.position.set(route[0][0], groundZ, route[0][1]); this.groundNow = groundZ;
+    this.wp = startAt; this.group.position.set(route[startAt][0], groundZ, route[startAt][1]); this.groundNow = groundZ;
   }
 
   /** Is the point (plan x,z; world y) within the zombie's body? Used by the light beam. */
   hit(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, cone: number): boolean {
-    if (!this.group.visible || this.presence < 0.9) return false;
+    if (!this.group.visible || this.presence < 0.9 || this.mode === 'dying') return false;
     const c = new THREE.Vector3(this.group.position.x, this.group.position.y + 1.0, this.group.position.z).sub(origin);
     const dist = c.length();
     if (dist > maxDist || dist < 0.01) return false;
@@ -100,8 +104,35 @@ export class Zombie {
   }
 
   /** The light burns it: it sets alight and runs away for a few seconds. */
-  ignite() { this.mode = 'flee'; this.modeT = 5; }
-  get burning() { return this.mode === 'flee'; }
+  hurt() {
+    if (this.mode === 'dying') return this.hp;
+    this.hp--;
+    if (this.hp > 0) { this.mode = 'flee'; this.modeT = 3.5; }
+    else { this.mode = 'dying'; this.dieT = 0; this.root.visible = false; this.quail.visible = true; this.quail.position.y = 0.2; }
+    return this.hp;
+  }
+  get burning() { return this.mode === 'flee' || this.mode === 'dying'; }
+  get hunting() { return this.mode === 'chase'; }
+  get alive() { return this.mode !== 'dying'; }
+
+  /** The zombie's soul: a small crimson quail that appears when the last hit lands and flies off. */
+  private buildQuail() {
+    const q = new THREE.Group(); q.visible = false; this.group.add(q); this.quail = q;
+    const M = (c: number) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, emissive: 0x330008, emissiveIntensity: 1 });
+    const crimson = M(0xc4143a), dark = M(0x7a0c26), cream = M(0xf0d8b8), beak = M(0xe8a030);
+    const box = (p: THREE.Object3D, w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); p.add(o); return o; };
+    box(q, 0.22, 0.2, 0.34, crimson, 0, 0, 0);                 // plump body
+    box(q, 0.16, 0.08, 0.2, cream, 0, -0.1, 0.03);             // pale belly
+    box(q, 0.14, 0.14, 0.14, crimson, 0, 0.16, 0.17);          // head
+    box(q, 0.02, 0.08, 0.02, dark, 0, 0.28, 0.14).rotation.x = -0.3;   // quail head-plume
+    box(q, 0.04, 0.04, 0.07, beak, 0, 0.15, 0.27);
+    box(q, 0.02, 0.02, 0.02, new THREE.MeshBasicMaterial({ color: 0x000000 }), 0.07, 0.18, 0.22);
+    box(q, 0.02, 0.02, 0.02, new THREE.MeshBasicMaterial({ color: 0x000000 }), -0.07, 0.18, 0.22);
+    box(q, 0.12, 0.05, 0.16, dark, 0, 0.0, -0.22);             // tail
+    const wing = (x: number) => { const p = new THREE.Group(); p.position.set(x, 0.07, 0); q.add(p); box(p, 0.34, 0.03, 0.2, dark, x > 0 ? 0.17 : -0.17, 0, 0); return p; };
+    this.wingL = wing(-0.11); this.wingR = wing(0.11);
+    q.scale.setScalar(1.5);
+  }
 
   /** Back onto the lawn, as far from `from` as the route allows (after it caught the player). */
   reset(from: THREE.Vector3) {
@@ -112,8 +143,7 @@ export class Zombie {
   }
 
   private animateFlames(dt: number) {
-    const on = this.mode === 'flee';
-    this.fire.intensity = on ? 5 + Math.random() * 3 : 0;
+    const on = this.mode === 'flee' || this.mode === 'dying';
     for (const f of this.flames) {
       f.life -= dt;
       if (f.life <= 0) {
@@ -131,12 +161,28 @@ export class Zombie {
 
   /** dark = it is night (sun well below the horizon); player = camera position for the head turn. */
   update(dt: number, dark: boolean, player: THREE.Vector3) {
+    if (this.mode === 'dying') this.presence = 1;
     const goal = dark ? 1 : 0;
     this.presence += Math.sign(goal - this.presence) * Math.min(Math.abs(goal - this.presence), dt * 0.5);   // 2 s to rise / sink
     const gr = this.group;
     gr.visible = this.presence > 0.01;
     if (!gr.visible) return;
     this.t += dt;
+    if (this.mode === 'dying') {                       // burst of flames, then the crimson quail climbs away
+      this.dieT += dt;
+      this.animateFlames(dt);
+      const k = this.dieT;
+      gr.position.y += dt * (1.2 + k * 1.6);
+      gr.position.x += Math.sin(this.heading) * dt * (1 + k);
+      gr.position.z += Math.cos(this.heading) * dt * (1 + k);
+      this.quail.rotation.x = -0.35;
+      const flap = Math.sin(this.t * 28) * 0.9;
+      this.wingL.rotation.z = flap; this.wingR.rotation.z = -flap;
+      gr.rotation.y = this.heading;
+      if (k > 0.8) for (const f of this.flames) f.m.visible = false;
+      if (this.dieT > 6) this.dead = true;
+      return;
+    }
     const px = player.x, pz = player.z;
     const toPx = px - gr.position.x, toPz = pz - gr.position.z;
     const pd = Math.hypot(toPx, toPz);

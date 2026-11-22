@@ -208,8 +208,15 @@ async function main() {
   // ---------- player & overview
   const player = new Player(camera, renderer.domElement, hs.world);
   player.teleport(house.spawn.x, house.spawn.y, house.outside.groundZ, house.spawn.yawDeg);
-  const zombie = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world);
-  scene.add(zombie.group);
+  // ---------- zombies: a new one every minute, each needs 5 hits of light, then turns into a crimson quail and flies away
+  const zombies: Zombie[] = [];
+  let spawnT = 0, kills = 0, spawned = 0;
+  const MAX_ZOMBIES = 8;
+  const spawnZombie = () => {
+    const z = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world, spawned++ % ZOMBIE_ROUTE.length);
+    zombies.push(z); scene.add(z.group);
+  };
+  spawnZombie();
 
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(7, 2, 6.5);
@@ -308,9 +315,14 @@ async function main() {
     shotCd = 0.45; beamT = 0.14;
     const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
     const origin = camera.position.clone();
-    const hit = zombie.hit(origin, dir, 15, 0.12);
-    if (hit) { zombie.ignite(); toast('Direct hit — it burns!'); }
-    const len = hit ? origin.distanceTo(new THREE.Vector3(zombie.group.position.x, zombie.group.position.y + 1, zombie.group.position.z)) : 9;
+    let target: Zombie | null = null, td = Infinity;
+    for (const z of zombies) if (z.hit(origin, dir, 15, 0.12)) { const d = origin.distanceTo(z.group.position); if (d < td) { td = d; target = z; } }
+    if (target) {
+      const left = target.hurt();
+      if (left > 0) toast(`Hit! ${left} more hit${left > 1 ? 's' : ''} to go`);
+      else { kills++; toast(`The zombie turns into a crimson quail and flies away! (${kills})`); }
+    }
+    const len = target ? td : 9;
     const right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
     const start = origin.clone().addScaledVector(dir, 0.4).addScaledVector(right, 0.18).add(new THREE.Vector3(0, -0.15, 0));
     beam.position.copy(start).addScaledVector(dir, len / 2);
@@ -326,7 +338,7 @@ async function main() {
     hurtT = 1.2; hurt.style.opacity = '0.85';
     player.crouch = false;
     player.teleport(2.3, 3.6, 3.34, 180);          // wake up at the foot of the bed
-    zombie.reset(new THREE.Vector3(2.3, 0, 3.6));
+    for (const z of zombies) if (z.alive && z.hunting) z.reset(new THREE.Vector3(2.3, 0, 3.6));
     toast('The zombie got you… you wake up in bed');
   };
   const toggleRoomLight = () => {
@@ -548,7 +560,7 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { zombie, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
+  Object.assign(window, { dom3d: { zombies, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -603,11 +615,17 @@ async function main() {
     const dt = timer.getDelta();
     for (const d of hs.doors) d.update(dt);
     tickSimClock();
-    zombie.update(dt, sunElev < -4, camera.position);
+    spawnT += dt;
+    if (spawnT >= 60) { spawnT = 0; if (zombies.length < MAX_ZOMBIES) { spawnZombie(); if (sunElev < -4) toast('Another zombie rises…'); } }
+    for (let i = zombies.length - 1; i >= 0; i--) {
+      const z = zombies[i];
+      z.update(dt, sunElev < -4, camera.position);
+      if (z.dead) { scene.remove(z.group); zombies.splice(i, 1); }
+    }
     shotCd -= dt;
     if (beamT > 0) { beamT -= dt; if (beamT <= 0) { beam.visible = false; flash.intensity = 0; } else (beam.material as THREE.MeshBasicMaterial).opacity = 0.7 * (beamT / 0.14); }
     if (hurtT > 0) { hurtT -= dt; hurt.style.opacity = String(Math.max(0, Math.min(0.85, hurtT / 1.2 * 0.85))); }
-    if (!overview && zombie.caught) caughtByZombie();
+    if (!overview && zombies.some((z) => z.caught)) caughtByZombie();
     if (overview) {
       orbit.update();
     } else {
