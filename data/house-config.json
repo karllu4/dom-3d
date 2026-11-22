@@ -48,9 +48,10 @@
     { "id": "05c", "level": "parter", "kind": "window", "rect": [13.561, 7.298, 14.001, 8.797], "sill": 1.40, "head": 2.511, "frame": "caramel", "panes": 1, "catalog": "#13 1460x1035(+30+46)" },
     { "id": "02",  "level": "parter", "kind": "window", "rect": [0.442, 9.157, 2.117, 9.597], "sill": 0.88, "head": 2.515, "frame": "caramel", "panes": 1, "span": [0.192, 2.117], "catalog": "#1 1845x1605(+30) fixed, corner window" },
     { "id": "02b", "level": "parter", "kind": "window", "rect": [0.0, 8.179, 0.442, 9.597], "sill": 0.88, "head": 2.515, "frame": "caramel", "panes": 1, "span": [8.179, 9.407], "catalog": "#2 1130x1605(+30), corner window" },
-    { "id": "Dz1", "level": "parter", "kind": "entrance", "rect": [4.921, 9.157, 6.50, 9.597], "sill": 0.0, "head": 2.13, "frame": "caramel", "panes": 0, "catalog": "front door 90/200 + sidelight W1 52/213",
+    { "id": "Dz1", "level": "parter", "kind": "entrance", "rect": [4.90, 9.157, 6.50, 9.597], "sill": 0.0, "head": 2.13, "frame": "caramel", "panes": 0, "catalog": "front door 90/200 + sidelight W1 52/213",
       "door": { "model": "Barański DB 107 (linia Retro), 3 raised panels, sidelight with X glazing bars", "color": "#2f4a68", "colorName": "RAL 5011",
-                "leaf": [4.96, 5.94], "hinge": "start", "swing": "out", "sidelight": [5.99, 6.47] } },
+                "leaf": [4.94, 5.92], "hinge": "start", "swing": "out", "sidelight": [5.97, 6.45],
+                "temporary": { "leaf": [4.94, 5.92], "hinge": "end", "swing": "out" } } },
     { "id": "Dz2", "level": "parter", "kind": "extdoor", "rect": [11.88, 0.601, 12.938, 1.037], "sill": 0.0, "head": 2.086, "frame": "caramel", "panes": 0, "catalog": "Wikęd BASIC 3.0 Tłoczone 26c, size 90 (opening 1056x2086), antracyt",
       "door": { "model": "Wikęd BASIC 3.0 Tłoczone 26c", "design": "grooves", "color": "#3b3e42", "colorName": "antracyt (roof colour)", "leaf": [11.95, 12.868], "hinge": "start", "swing": "out" } },
     { "id": "BG",  "level": "parter", "kind": "gate", "rect": [8.079, 12.556, 12.93, 12.996], "sill": -0.15, "head": 2.10, "frame": "caramel", "panes": 0, "catalog": "garage gate 485/225",
@@ -115,8 +116,8 @@
       { "name": "J2 west", "ridgeAxis": "x", "ridgeAt": 6.05, "ridgeZ": 7.59, "z": 6.59 },
       { "name": "east",    "ridgeAxis": "x", "ridgeAt": 5.45, "ridgeZ": 7.55, "z": 6.55 } ] },
     "parts": [
-      { "name": "main-south", "rect": [-0.7, -1.1, 3.96, 10.6], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
-      { "name": "main-north", "rect": [3.96, -0.4, 14.7, 10.6], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "main-south", "rect": [-0.7, -1.1, 3.96, 10.6], "wallClip": [-0.7, -1.1, 3.96, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "main-north", "rect": [3.96, -0.4, 14.7, 10.6], "wallClip": [3.96, -0.4, 14.7, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
       { "name": "west-gable", "rect": [3.16, -0.5, 8.94, 5.10], "wallRect": [3.71, -0.5, 8.29, 5.10], "ridge": { "axis": "x", "at": 6.05, "z": 7.59 } },
       { "name": "east-gable", "rect": [3.16, 5.10, 7.74, 10.6], "wallRect": [3.8, 5.10, 6.99, 10.6], "ridge": { "axis": "x", "at": 5.45, "z": 7.55 } },
       { "name": "garage-hip", "rect": [6.3, 5.10, 14.7, 13.7], "hip": { "eaveZ": 3.11, "edges": ["x0", "x1", "y1"] } }
@@ -133,9 +134,13 @@
   ],
   "chimney": { "rect": [11.665, 4.006, 12.545, 4.747], "top": 8.99, "walkway": [11.474, 3.464, 12.545, 3.663] },
 
+  "_wallEdits": "Owner decision 2026-11-22: the door opening stays 160 cm (x 4.90 .. 6.50) and a 20 cm strip of wall remains beside it (x 6.50 .. 6.70), so the entrance recess is widened by 20 cm into the wall between entrance and garage (the front part of the right pier). cut / add = rectangles [x0, y0, x1, y1] (plan metres).",
+  "wallEdits": [ { "level": "parter", "cut": [[6.4, 9.597, 6.7, 10.1]], "add": [] } ],
+
   "outside": { "groundZ": -0.32, "terraces": [
     { "name": "taras zadaszony", "rect": [-0.3, -1.6, 3.6, 1.6], "z": -0.02 },
-    { "name": "wejście", "rect": [4.0, 9.597, 7.0, 11.0], "z": -0.02 }
+    { "name": "wejście: piasek (stan obecny, bez kostki)", "rect": [-1.0, 9.597, 16.0, 24.0], "z": -0.305, "material": "sand" },
+    { "name": "wejście: kruszywo przed drzwiami", "rect": [4.405, 9.597, 6.695, 10.35], "z": -0.1, "material": "gravel" }
   ] },
 
   "_atticFinish": "wallFills: wool + plasterboard panels on a wall face (y = wall plane, n = +1 into the room towards +y, poly = [x, z] points) for bare triangles left between the lining and a wall: 2/5 north wall right of the balcony-door niche (x 7.9, z 5.15-5.9), the niche side face x=7.9 and the niche back wall above the door head (axis x: poly = [y, z], axis y: poly = [x, z]). beamTunnel: the ridge steel beam (roofBeams[1]) leaves the rising ceiling of 2/8 near the north wall, so it gets ONE insulation block (wool + board, xRange = the recess in the north wall between the two pilasters, x 9.886-11.639, so the block sides line up with the pilaster faces) from the wall down to the flat ceiling level, ending where the lining face meets it. risingCeiling (owner 2026-11-17): in room 2/8 the flat ceiling piece under the main north slope (containing seed) follows the slope lining (15+15 cm wool already = 30 cm) up to the north wall, so the lining is one plane and the ceiling is as high as possible near the door. flattenBays: rooms where the bay under a gable roof is filled in, so the main slope lining runs on unbroken to the walls (simpler to build, loses a little space). Owner's planned attic ceiling (toggle I): flat plasterboard ceiling 2.80 above each room floor; on the slopes below it: 5 cm vent gap under the boarding, 15 cm wool between rafters, 15 cm wool under rafters, double plasterboard 2x12.5 mm; on the flat part 30 cm wool lies on the plasterboard.",

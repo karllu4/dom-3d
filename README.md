@@ -55,7 +55,8 @@ Orientation (fitted on the geoportal orthophoto, `site` in the config): the entr
   Rafters are 3D timbers 8×20 cm every ~90 cm (spacing assumed), plumb-cut at the eaves; hip/valley rafters same.
   Collar ties (jętki) 2×4×20 cm: J1 main roof underside +6.79, J2 west gable +6.59, east gable +6.55 (assumed).
   The roof plane is the underside of the rafters; membrane on the rafters, tiles `roof.thickness` (0.34 m) above.
-- Front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side follow the product photo on baranskidrzwi.pl. Opens/closes with `E`.
+- Entrance walls as on site (photos 2026-11-21): raw concrete piers either side of the recess, concrete lintel over the door opening, bare sand in front with a crushed-stone pad at the threshold (no paving yet). The door stays the planned one; the temporary OSB door seen on site (hinged on the right, opens outward, fixed OSB panel instead of the sidelight) is switchable in the facade menu ("Entrance door").
+- Planned front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side (left, owner's choice; the drawing has it on the sidelight side), four hinges and the sidelight bars follow the product drawing on baranskidrzwi.pl. Opens/closes with `E`.
 - Juliet balconies on the 4 attic balcony doors built from `balkon_francuski/*.dxf` (posts, 3 rails, balusters, rings, fixed anthracite, same as the roof tiles; facade designs do not change it).
 - One downstand beam between kitchen and dining (24 cm wide, underside +2.63 read from the plan label 311/263).
 - Garage door: Hörmann LPU 67 Thermo, L-ribbed, matt RAL 7016 anthracite (chosen, A); alternatives B oak Decograin, C flat RAL 5011 — `G` cycles, `E` opens.

@@ -416,9 +416,24 @@ async function main() {
   const facadeBtns: HTMLButtonElement[] = [];
   const colourRows: Record<string, { sync: () => void }> = {};
   const doorById = (id: string) => hs.doors.find((d) => (d as { id?: string }).id === id) as { recolor: (hex: string) => void } | undefined;
+  const foamMap = hs.entrance?.foam.map ?? null;
   const applyLook = () => {
     applyFacadeUniforms({ id: look.raw ? 'raw' : 'x', wall: look.wall, plinth: look.plinth, layers: [...look.layers, ...(look.clinker ? clinkerLayers(look.clinkerColor) : [])] });
     hs.garage?.setLook(look.gate.color, look.gate.wood);
+    // slab over the entrance recess: bare concrete as built; with a facade design it is replaced by plastered wall geometry (one continuous plane with the piers and the wall above)
+    for (const sm of hs.soffits) {
+      const entr = sm.name === 'entrance-slab';
+      sm.visible = look.raw || !entr;
+      sm.material = look.raw ? [mats.slabConcrete, mats.slabConcrete, mats.slabConcrete] : [mats.facade, mats.facade, mats.wallTop];
+    }
+    const ec = hs.root.getObjectByName('entrance-ceiling'); if (ec) ec.visible = !look.raw;
+    if (hs.entrance) {                      // entrance recess: raw concrete as built, or rendered like the rest of the facade
+      hs.entrance.raw.visible = look.raw;
+      hs.entrance.foamGroup.visible = look.raw;   // finished facade: the foam is rendered over (plastered), see 'entrance-ceiling'
+      const f = hs.entrance.foam;
+      f.color.set(look.raw ? '#ffffff' : look.wall);
+      f.map = look.raw ? foamMap : null; f.needsUpdate = true;
+    }
     doorById('Dz1')?.recolor(look.door);
     doorById('Dz2')?.recolor(look.door2);
     const st = FACADE_STYLES[facadeIdx];
@@ -477,6 +492,16 @@ async function main() {
   clk.className = 'clinker-toggle';
   clk.onclick = () => { look.clinker = !look.clinker; applyLook(); };
   colBox.appendChild(clk);
+  // entrance door: temporary OSB door as it stands on site, or the planned Barański DB 107
+  type Variant = { variant?: string; id?: string; active?: boolean; setActive?: (a: boolean) => void };
+  const entranceDoors = hs.doors.filter((d) => (d as Variant).id === 'Dz1') as unknown as Variant[];
+  if (entranceDoors.some((d) => d.variant === 'temporary')) {
+    const eb = document.createElement('button');
+    eb.className = 'clinker-toggle';
+    const syncDoor = () => { const t = entranceDoors.find((d) => d.variant === 'temporary')!.active; eb.classList.toggle('on', !!t); eb.textContent = `Entrance door: ${t ? 'temporary OSB door (as on site now)' : 'planned Barański DB 107'}`; };
+    eb.onclick = () => { const t = entranceDoors.find((d) => d.variant === 'temporary')!.active; for (const d of entranceDoors) d.setActive?.(d.variant === 'temporary' ? !t : !!t); syncDoor(); };
+    colBox.appendChild(eb); syncDoor();
+  }
   colourRows.clinker = { sync: () => { clk.classList.toggle('on', look.clinker); clk.textContent = `Clinker slips Cerrad Piatto Sand 30×7.4 (entrance + under kitchen window, optional on any design): ${look.clinker ? 'on' : 'off'}`; } };
   // clinker colour: the Cerrad Piatto tones plus any colour (the entrance recess and under the kitchen window)
   {
@@ -524,6 +549,7 @@ async function main() {
   const nearestDoor = () => {
     let best = null as (typeof hs.doors)[number] | null, bd = 3.0;
     for (const d of hs.doors) {
+      if ((d as { active?: boolean }).active === false) continue;
       const dist = Math.hypot(d.center[0] - player.pos.x, d.center[1] - player.pos.y);
       if (dist < bd && Math.abs(player.feet - d.floorZ) < 1.2) { bd = dist; best = d; }
     }

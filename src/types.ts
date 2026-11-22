@@ -40,13 +40,17 @@ export interface OpeningJ {
   rect: Rect;
   sill: number;
   head: number;
+  /** along-wall range [from, to] closed with full-height masonry (the built opening is narrower than the plan opening) */
+  infill?: [number, number];
   frame?: 'caramel' | 'black' | 'cherry';
   panes?: number;
   span?: [number, number];
   catalog?: string;
   juliet?: { opening: number; extend: number; dxf?: string; dxfNote?: string };
   garage?: { sections: number; variants: { name: string; color: string; ribs: number; wood: boolean }[] };
-  door?: { model?: string; design?: string; color: string; colorName?: string; leaf: [number, number]; hinge: 'start' | 'end'; swing?: 'in' | 'out'; sidelight?: [number, number] };
+  door?: { model?: string; design?: string; color: string; colorName?: string; leaf: [number, number]; hinge: 'start' | 'end'; swing?: 'in' | 'out'; sidelight?: [number, number];
+    /** current state on site: temporary OSB door (leaf + fixed OSB panel instead of the sidelight); the model above is the planned door */
+    temporary?: { leaf: [number, number]; hinge: 'start' | 'end'; swing?: 'in' | 'out' } };
 }
 
 export interface StairsJ {
@@ -62,7 +66,7 @@ export interface StairsJ {
 export interface RoofJ {
   k: number;
   thickness: number;
-  parts: { name: string; rect: Rect; wallRect?: Rect; planes: Plane[] }[];
+  parts: { name: string; rect: Rect; wallRect?: Rect; wallClip?: Rect; planes: Plane[] }[];
   faces: (PolyJ & { plane: Plane })[];
   items: { id: string; kind: 'window' | 'hatch'; center: Pt; w: number; l: number; rect: Rect; plane: Plane }[];
   rafter: { width: number; depth: number; spacing: number };
@@ -79,7 +83,7 @@ export interface HouseJ {
   openings: OpeningJ[];
   stairs: StairsJ;
   roof: RoofJ;
-  outside: { groundZ: number; terraces: { name: string; rect: Rect; z: number }[] };
+  outside: { groundZ: number; terraces: { name: string; rect: Rect; z: number; material?: 'sand' | 'gravel' }[] };
   spawn: { x: number; y: number; yawDeg: number };
   chimney?: { rect: Rect; top: number; walkway?: Rect };
   beams?: { id: string; level: string; rect: Rect; bottom: number; top: number }[];

@@ -13,6 +13,10 @@ export interface HouseScene {
   world: World;
   doors: Openable[];
   garage?: GarageDoor;
+  /** entrance recess as built: raw-concrete pieces (hidden once a facade design plasters them) and the foam under the slab */
+  /** slab-edge prisms (entrance canopy, covered terrace): bare concrete as built, plastered like the walls once a facade design is picked */
+  soffits: THREE.Mesh[];
+  entrance?: { raw: THREE.Group; foam: THREE.MeshStandardMaterial; foamGroup: THREE.Group };
   finish?: { wool: THREE.Group; board: THREE.Group; drop: number };
 }
 
@@ -70,6 +74,25 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
 
     // walls
     for (const w of lv.walls) addWall(w, w.z0, w.z1); // per-piece base heights come from build_house.py
+    // beam over the entrance recess: its front is a strip of the facade wall itself (same mesh type and plane as the piers and the wall above), not a separate slab face
+    if (!isAttic) {
+      const eo = h.openings.find((o) => o.kind === 'entrance' && o.level === lv.id);
+      const sp = eo && h.soffits?.find((q) => {
+        const xs = q.outer.map((v) => v[0]), cx = (eo.rect[0] + eo.rect[2]) / 2;
+        return Math.min(...xs) < cx && Math.max(...xs) > cx && Math.max(...q.outer.map((v) => v[1])) > eo.rect[3];
+      });
+      if (eo && sp) {
+        const xs = sp.outer.map((v) => v[0]);
+        addWall(rectPoly([Math.min(...xs) - 0.1, 10.087, Math.max(...xs) + 0.1, 10.097] as Rect), 2.925, 3.335);   // overlaps the walls either side and above, so no edge of its own shows   // 10.097 = facade plane of the piers
+        // finished facade: the lowered recess ceiling (20 cm foam, rendered over) is a strip of the same wall mesh family below the beam front plus a flat underside, so there is no front face of its own to show seams
+        const ys = sp.outer.map((v) => v[1]), x0 = Math.min(...xs), x1 = Math.max(...xs);
+        const ceil = new THREE.Group();
+        ceil.name = 'entrance-ceiling'; ceil.visible = false;
+        ceil.add(mesh(prismGeometry(rectPoly([x0 - 0.1, 10.087, x1 + 0.1, 10.097] as Rect), 2.725, 2.925, outside), wallMats));
+        ceil.add(mesh(flatGeometry(rectPoly([x0, Math.min(...ys), x1, 10.097] as Rect), 2.725, false), mats.facade));
+        g.add(ceil);
+      }
+    }
 
     // openings: sill + lintel blocks, frames, glass, railings
     for (const o of h.openings.filter((o) => o.level === lv.id)) {
@@ -83,7 +106,20 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       // attic balcony doors sit on the outer face of a 44 cm wall: the wall must run up to the threshold (the floor slab does not reach through it)
       else if (passable && isAttic && o.kind === 'balcony' && o.sill > z0 + 0.01) addWall(r, z0, o.sill - 0.005, false);
       if (o.head < z1 - 0.01) addWall(r, o.head, z1, true);
-      if (o.door) doors.push(buildDoor(g, o, mats, insideLevel(lv.id), world));
+      if (o.door) {
+        const sub = () => { const grp = new THREE.Group(); g.add(grp); return grp; };
+        const pg = sub();
+        const planned = buildDoor(pg, o, mats, insideLevel(lv.id), world);
+        planned.group = pg; planned.variant = 'planned';
+        doors.push(planned);
+        if (o.door.temporary) {
+          const tg = sub();
+          const temp = buildTempDoor(tg, o, mats, insideLevel(lv.id), world);
+          temp.group = tg; temp.variant = 'temporary';
+          doors.push(temp);
+          temp.setActive(false);           // planned door is the default; the OSB door (site state) is switchable
+        }
+      }
       else if (o.garage) { frameOnly(g, o, true, mats); garage = new GarageDoor(g, o, world); doors.push(garage); }
       else buildOpeningFill(g, o, lv, mats, insideLevel(lv.id), world, julietMat);
     }
@@ -172,10 +208,46 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
   }
 
   // overhanging slab (covered terrace / entrance canopy): bare concrete, as built
+  const soffitMeshes: THREE.Mesh[] = [];
   for (const sp of h.soffits ?? []) {
     // kept just inside the attic floor (top 3.33) and just below the attic walls (bottom 2.925) so no surface
     // is coplanar with them (coplanar faces flicker)
-    levels['parter'].add(mesh(prismGeometry(sp, 2.925, 3.33), [mats.slabConcrete, mats.slabConcrete, mats.slabConcrete]));
+    const sm = mesh(prismGeometry(sp, 2.925, 3.33), [mats.slabConcrete, mats.slabConcrete, mats.slabConcrete]);
+    const eo2 = h.openings.find((o) => o.kind === 'entrance');
+    if (eo2) {
+      const xs2 = sp.outer.map((v) => v[0]), cx2 = (eo2.rect[0] + eo2.rect[2]) / 2;
+      if (Math.min(...xs2) < cx2 && Math.max(...xs2) > cx2 && Math.max(...sp.outer.map((v) => v[1])) > eo2.rect[3]) sm.name = 'entrance-slab';
+    }
+    soffitMeshes.push(sm);
+    levels['parter'].add(sm);
+  }
+
+  let entrance: HouseScene['entrance'];
+  // entrance recess as built (site photos 2026-11-21): raw concrete piers and ring beam, concrete lintel over the door opening
+  const entr = h.openings.find((o) => o.kind === 'entrance' && o.door?.temporary);
+  const entrSoffit = entr && h.soffits?.find((sp) => {
+    const xs = sp.outer.map((p) => p[0]), ys = sp.outer.map((p) => p[1]);
+    const cx = (entr.rect[0] + entr.rect[2]) / 2, y1 = entr.rect[3];
+    return Math.min(...xs) < cx && Math.max(...xs) > cx && Math.min(...ys) < y1 + 0.1 && Math.max(...ys) > y1;
+  });
+  if (entr && entrSoffit) {
+    const xs = entrSoffit.outer.map((p) => p[0]), ys = entrSoffit.outer.map((p) => p[1]);
+    const nx0 = Math.min(...xs), nx1 = Math.max(...xs), back = entr.rect[3], front = Math.max(...ys) + 0.005;
+    const e = 0.012, zb = h.outside.groundZ + 0.12, zt = 2.925;
+    const pierL = 3.761, pierR = 6.999;       // outer edges of the piers (ground-floor wall outline)
+    const pg = new THREE.Group();   // raw concrete pieces
+    const foamG = new THREE.Group();
+    pg.add(box(pierL, front, zb, nx0, front + e, zt, mats.rawConcrete));       // left pier, front face
+    pg.add(box(nx0, back, zb, nx0 + e, front + e, zt, mats.rawConcrete));      // left pier, face towards the recess
+    pg.add(box(nx1, front, zb, pierR, front + e, zt, mats.rawConcrete));       // right pier, front face
+    pg.add(box(nx1 - e, back, zb, nx1, front + e, zt, mats.rawConcrete));      // right pier, face towards the recess
+    // lintel over the opening (bearing ~10 cm each side), flush with the back wall
+    pg.add(box(entr.rect[0] - 0.1, back, entr.head, entr.rect[2] + 0.1, back + 0.012, entr.head + 0.2, mats.rawConcrete));
+    // 20 cm graphite EPS under the slab over the recess (between the piers, back wall to front edge)
+    foamG.add(box(nx0 + e, back, 2.925 - 0.2, nx1 - e, front, 2.925, mats.epsGraphite));
+    world.solids.push(solidFromRect([nx0 + e, back, nx1 - e, front], 2.925 - 0.2, 2.925, 'eps'));
+    levels['parter'].add(pg, foamG);
+    entrance = { raw: pg, foam: mats.epsGraphite, foamGroup: foamG };
   }
 
   buildStairs(h, mats, levels, world);
@@ -481,7 +553,7 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
     finish = { wool, board, drop: (af.woolUnder + af.board) * s };
   }
 
-  return { root, levels, roof, overlays, world, doors, garage, finish };
+  return { root, levels, roof, overlays, world, doors, garage, finish, entrance, soffits: soffitMeshes };
 }
 
 function buildOpeningFill(g: THREE.Group, o: OpeningJ, lv: LevelJ, mats: Materials, inside: (x: number, y: number) => boolean, world: World, julietMat?: THREE.Material) {
@@ -775,7 +847,8 @@ function buildOutside(h: HouseJ, mats: Materials, root: THREE.Group, world: Worl
   root.add(ground);
   world.solids.push(solidFromRect([-60, -60, 75, 75], gz - 1, gz, 'ground'));
   for (const t of h.outside.terraces) {
-    root.add(mesh(prismGeometry(rectPoly(t.rect), gz, t.z), [mats.paving, mats.paving, mats.paving], false));
+    const m = t.material === 'sand' ? mats.sand : t.material === 'gravel' ? mats.gravel : mats.paving;
+    root.add(mesh(prismGeometry(rectPoly(t.rect), gz, t.z), [m, m, m], false));
     world.solids.push(solidFromRect(t.rect, gz, t.z, 'terrace'));
   }
 }
@@ -881,6 +954,10 @@ function garageTexture(v: { color: string; ribs: number; wood: boolean }, sectio
 /** Hinged door leaf (swing in or out per config); press E near it (see main.ts). */
 export class Door implements Openable {
   open = false;
+  /** false while the other variant (temporary OSB door / planned door) is shown */
+  active = true;
+  group?: THREE.Group;
+  variant = '';
   /** Repaint the leaf, frame and sidelight (facade design / colour picker). */
   recolor: (hex: string) => void = () => {};
   private angle = 0;
@@ -892,7 +969,12 @@ export class Door implements Openable {
     const step = Math.sign(target - this.angle) * Math.min(Math.abs(target - this.angle), dt * 2.2);
     this.angle += step;
     this.pivot.rotation.y = this.base + this.angle;
-    this.solid.off = Math.abs(this.angle) > 0.25;
+    this.solid.off = !this.active || Math.abs(this.angle) > 0.25;
+  }
+  setActive(a: boolean) {
+    this.active = a;
+    if (this.group) this.group.visible = a;
+    this.solid.off = !a || Math.abs(this.angle) > 0.25;
   }
 }
 
@@ -912,6 +994,7 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
     const [ax, ay] = P(s0, n0), [bx, by] = P(s1, n1);
     return box(ax, ay, z0, bx, by, z1, m);
   };
+  const sideParts: THREE.MeshStandardMaterial[] = [];
   const [l0, l1] = d.leaf;
   const top = o.head - 0.07;
   const F = 0.07, T = 0.07;
@@ -924,24 +1007,35 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
     const [s0, s1] = d.sidelight;
     g.add(part(s0, s0 + F, o.sill, o.head, plane - 0.05, plane + 0.05, col));
     g.add(part(s1 - F, s1, o.sill, o.head, plane - 0.05, plane + 0.05, col));
-    g.add(part(s0, s1, o.sill, o.sill + 0.1, plane - 0.05, plane + 0.05, col));
-    g.add(part(s0, s1, top, o.head, plane - 0.05, plane + 0.05, col));
-    const glass = part(s0 + F, s1 - F, o.sill + 0.45, top, plane - 0.006, plane + 0.006, mats.glass);
+    // proportions from the DB 107 door + sidelight drawing (703 px = 213 cm): glass 16 cm below the top to 77 cm above the threshold, bottom rail 21 cm, raised panel below the glass
+    const gTop = o.head - 0.16, gBot = o.sill + 0.77;
+    g.add(part(s0, s1, o.sill, o.sill + 0.2, plane - 0.05, plane + 0.05, col));
+    g.add(part(s0, s1, gTop, o.head, plane - 0.05, plane + 0.05, col));
+    const glass = part(s0 + F, s1 - F, gBot, gTop, plane - 0.006, plane + 0.006, mats.glass);
     glass.castShadow = false;
     g.add(glass);
-    g.add(part(s0 + F, s1 - F, o.sill + 0.1, o.sill + 0.42, plane - 0.02, plane + 0.02, col)); // bottom panel
+    g.add(part(s0 + F, s1 - F, o.sill + 0.2, gBot, plane - 0.03, plane + 0.03, col)); // lower wooden panel
+    {
+      const w = s1 - s0, out = -nIn;
+      const gr = new THREE.MeshStandardMaterial({ color: new THREE.Color(d.color).multiplyScalar(0.45), roughness: 0.6 });
+      const fr = part(s0 + 0.12 * w, s1 - 0.12 * w, o.sill + 0.25, o.sill + 0.69, plane + out * 0.031, plane + out * 0.037, gr);   // dark groove round the inset
+      const ri = part(s0 + 0.24 * w, s1 - 0.24 * w, o.sill + 0.30, o.sill + 0.64, plane + out * 0.03, plane + out * 0.056, col);       // raised inset
+      g.add(fr, ri);
+      sideParts.push(gr);
+    }
     // X glazing bars: two diagonals per cell, three cells stacked (as on the DB 107 sidelights)
     const diag = (sa: number, za: number, sb: number, zb: number) => {
-      const ds = sb - sa, dz = zb - za, len = Math.hypot(ds, dz), th = 0.02;
+      const ds = sb - sa, dz = zb - za, len = Math.hypot(ds, dz), th = 0.03;
       const sc = (sa + sb) / 2, zc = (za + zb) / 2;
       const m = alongX ? mesh(new THREE.BoxGeometry(len, th, 0.03), col) : mesh(new THREE.BoxGeometry(0.03, th, len), col);
       if (alongX) { m.rotation.z = Math.atan2(dz, ds); m.position.set(sc, zc, plane); }
       else { m.rotation.x = Math.atan2(-dz, ds); m.position.set(plane, zc, sc); }
       g.add(m);
     };
-    const zlo = o.sill + 0.45, zhi = top - 0.02, rows = 3, rh = (zhi - zlo) / rows;
+    const zlo = gBot, zhi = gTop, rows = 3, rh = (zhi - zlo) / rows;
     const sa = s0 + F, sb = s1 - F;
     for (let r = 0; r < rows; r++) { const za = zlo + r * rh, zb = za + rh; diag(sa, za, sb, zb); diag(sa, zb, sb, za); }
+    for (let r = 1; r < rows; r++) { const zr = zlo + r * rh; g.add(part(sa, sb, zr - 0.015, zr + 0.015, plane - 0.015, plane + 0.015, col)); }   // horizontal bar between the X cells
     const [ax, ay] = P(s0, plane - 0.05), [bx, by] = P(s1, plane + 0.05);
     world.solids.push(solidFromRect([Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)], o.sill, o.head, 'sidelight'));
   }
@@ -989,9 +1083,9 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
       leaf.add(gr);
     }
   } else {
-    panel(0.13, 0.87, 0.59, 0.94); // top, large
-    panel(0.13, 0.87, 0.41, 0.52); // middle, small
-    panel(0.13, 0.87, 0.13, 0.33); // bottom, large
+    panel(0.19, 0.84, 0.605, 0.903); // top, large
+    panel(0.19, 0.84, 0.41, 0.495);  // middle, small
+    panel(0.19, 0.84, 0.14, 0.31);   // bottom, large
   }
   if (grooved) brass.color.set(0x1a1a1b), brass.metalness = 0.3, brass.roughness = 0.45;   // black hardware
   if (grooved) for (const side of [-1, 1]) {                 // separate top-lock escutcheon
@@ -999,8 +1093,13 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
     tl.position.set(L - 0.065, 1.48, side * nIn * (T / 2 + 0.006));
     leaf.add(tl);
   }
+  if (!grooved) {   // small key escutcheon above the handle (DB 107 drawing)
+    const key = mesh(new THREE.BoxGeometry(0.03, 0.07, 0.01), brass);
+    key.position.set(L - 0.065, 1.59, -nIn * (T / 2 + 0.006));
+    leaf.add(key);
+  }
   // lock side (lock edge = local +L): escutcheon + lever outside and inside
-  const handY = 1.05;
+  const handY = 1.10;
   const esc = mesh(new THREE.BoxGeometry(0.035, grooved ? 0.27 : 0.24, 0.01), brass);
   esc.position.set(L - 0.065, handY - (grooved ? 0.05 : 0), -nIn * (T / 2 + 0.006));
   leaf.add(esc);
@@ -1013,8 +1112,8 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
   const escIn = mesh(new THREE.BoxGeometry(0.035, grooved ? 0.27 : 0.24, 0.01), brass);
   escIn.position.set(L - 0.065, handY - (grooved ? 0.05 : 0), nIn * (T / 2 + 0.006));
   leaf.add(escIn);
-  // three hinges on the hinge edge (local x = 0 is the pivot)
-  for (const yy of [0.25, 1.0, 1.8]) {
+  // four hinges on the hinge edge, at 32 / 83 / 134 / 184 cm (local x = 0 is the pivot)
+  for (const yy of [0.32, 0.83, 1.34, 1.84]) {
     const hinge = mesh(new THREE.BoxGeometry(0.03, 0.1, 0.03), brass);
     hinge.position.set(0.012, yy, -nIn * (T / 2 + 0.012));
     leaf.add(hinge);
@@ -1043,9 +1142,73 @@ function buildDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: num
   door.recolor = (hex) => {
     col.color.set(hex);
     groove.color.set(hex).multiplyScalar(0.45);
+    for (const m of sideParts) m.color.set(hex).multiplyScalar(0.45);
     for (const m of lineMats) m.color.set(hex).multiplyScalar(1.9);
   };
   return door;
+}
+
+/**
+ * Temporary entrance door as it stands on site (photos 2026-11-21): a leaf of OSB on a pine frame hung on zinc hinges in an
+ * OSB lining that sits on the outer face of the opening, plus a fixed OSB panel where the sidelight will go. Opens outward.
+ */
+function buildTempDoor(g: THREE.Group, o: OpeningJ, mats: Materials, inside: (x: number, y: number) => boolean, world: World): Door {
+  const t = o.door!.temporary!;
+  const [x0, y0, x1, y1] = o.rect;                // entrance wall runs along x, the outer face is the side away from the house
+  const cx = (x0 + x1) / 2;
+  const aIn = inside(cx, y0 - 0.15);
+  const out = aIn ? 1 : -1;                        // plan direction pointing outside
+  const outerFace = aIn ? y1 : y0;
+  const T = 0.05, plane = outerFace - out * 0.035;  // leaf centre line, nearly flush with the outer face
+  const [l0, l1] = t.leaf;
+  const top = o.head, z0 = o.sill + 0.02;
+  const pine = mats.timber;
+  const sheet = (a: number, b: number, za: number, zb: number, thick: number, m: THREE.Material, c = plane) => box(a, c - thick / 2, za, b, c + thick / 2, zb, m);
+  // OSB lining inside the opening: jambs, head (reveal 25 cm deep)
+  const rev = 0.25, jt = 0.025;
+  const d0 = Math.min(outerFace, outerFace - out * rev), d1 = Math.max(outerFace, outerFace - out * rev);
+  g.add(box(x0, d0, z0, x0 + jt, d1, top, mats.osb));
+  g.add(box(x1 - jt, d0, z0, x1, d1, top, mats.osb));
+  g.add(box(x0, d0, top - jt, x1, d1, top, mats.osb));
+  // fixed OSB panel(s) beside the leaf
+  const fixed: [number, number][] = [];
+  if (l0 - x0 > 0.03) fixed.push([x0, l0]);
+  if (x1 - l1 > 0.03) fixed.push([l1, x1]);
+  for (const [a, b] of fixed) {
+    g.add(sheet(a, b, z0, top, T, mats.osb, plane - out * 0.005));
+    world.solids.push(solidFromRect([a, plane - 0.03, b, plane + 0.03], z0, top, 'osb'));
+  }
+  // leaf on a pivot at the hinge edge; hinge at the end (+x) means the leaf extends towards -x
+  const hingeEnd = t.hinge === 'end';
+  const hx = hingeEnd ? l1 : l0, along = hingeEnd ? -1 : 1;
+  const L = l1 - l0, H = top - z0 - 0.01;
+  const pivot = new THREE.Group();
+  pivot.position.set(hx, z0, plane);
+  g.add(pivot);
+  const leaf = new THREE.Group();
+  pivot.add(leaf);
+  const lx = (a: number, b: number) => (along > 0 ? [a, b] : [-b, -a]) as [number, number];   // leaf-local x range measured from the hinge
+  const part = (a: number, b: number, za: number, zb: number, zn0: number, zn1: number, m: THREE.Material) => {
+    const [p, q] = lx(a, b);
+    const mm = mesh(new THREE.BoxGeometry(q - p, zb - za, zn1 - zn0), m);
+    mm.position.set((p + q) / 2, (za + zb) / 2, (zn0 + zn1) / 2);
+    return mm;
+  };
+  leaf.add(part(0, L, 0, H, -T / 2, T / 2, mats.osb));
+  leaf.add(part(L - 0.06, L, 0, H, -T / 2 - 0.012, T / 2 + 0.012, pine));    // pine batten along the lock edge
+  leaf.add(part(0, 0.06, 0, H, -T / 2 - 0.012, T / 2 + 0.012, pine));         // ... and the hinge edge
+  leaf.add(part(0, L, 0, 0.06, -T / 2 - 0.012, T / 2 + 0.012, pine));         // bottom
+  leaf.add(part(0, L, H - 0.06, H, -T / 2 - 0.012, T / 2 + 0.012, pine));     // top
+  const outZ = out * (T / 2 + 0.012);
+  for (const zz of [0.3, 0.85, 1.4, 1.85]) leaf.add(part(0, 0.13, zz, zz + 0.045, outZ - 0.004, outZ + 0.004, mats.zincHinge));   // flat zinc hinge leaves
+  leaf.add(part(L - 0.1, L - 0.07, 0.98, 1.01, -outZ, outZ, mats.zincHinge));                                                  // through-bolt knob
+  // pivot rotation: local -x (leaf extends that way for a hinge at the end) swings to +plan-y for positive angles
+  const outward = t.swing !== 'in';
+  const sign = (hingeEnd ? 1 : -1) * out * (outward ? 1 : -1);
+  const openAngle = sign * Math.PI * 0.46;
+  const solid = solidFromRect([Math.min(l0, l1), plane - 0.03, Math.max(l0, l1), plane + 0.03], z0, top, 'door');
+  world.solids.push(solid);
+  return new Door(o.id, 'Temporary OSB door (site state)', [(l0 + l1) / 2, plane], o.sill, pivot, 0, openAngle, solid);
 }
 
 /**

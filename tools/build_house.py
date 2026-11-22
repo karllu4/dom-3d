@@ -173,7 +173,7 @@ def build_roof(rc):
         for piece in parts(vis.buffer(0)):
             if piece.area > 1e-3:
                 faces.append({'plane': [round(v, 5) for v in pl], 'overhang': True, **poly_json(piece)})
-    parts_out = [{'name': p['name'], 'rect': p['rect'], 'wallRect': p.get('wallRect', p['rect']), 'planes': [[round(v, 5) for v in pl] for pl in planes]}
+    parts_out = [{'name': p['name'], 'rect': p['rect'], 'wallRect': p.get('wallRect', p['rect']), **({'wallClip': p['wallClip']} if 'wallClip' in p else {}), 'planes': [[round(v, 5) for v in pl] for pl in planes]}
                  for p, planes, _ in P]
     # vertical steps: where two faces share an edge but meet at different heights, the slot between them is open
     steps = []
@@ -277,7 +277,18 @@ def main():
         walls, page = extract_walls(os.path.join(plans, lv['pdf']), lv['sheetOffsetPt'])
         ops = [o for o in cfg['openings'] if o['level'] == lv['id']]
         op_union = unary_union([rect(o['rect']) for o in ops])
-        wall_union = unary_union(walls)
+        # 'infill' [a, b]: masonry the plan leaves open beside a narrower built opening (along the opening's long axis)
+        fills = []
+        for o in ops:
+            if 'infill' in o:
+                x0, y0, x1, y1 = o['rect']; a, b = o['infill']
+                fills.append(box(a, y0, b, y1) if x1 - x0 >= y1 - y0 else box(x0, a, x1, b))
+        wall_union = unary_union(list(walls) + fills)
+        # 'wallEdits' (config): rectangles cut from / added to the plan walls, for as-built changes the PDF does not show
+        for ed in cfg.get('wallEdits', []):
+            if ed['level'] != lv['id']: continue
+            for r in ed.get('cut', []): wall_union = wall_union.difference(rect(r))
+            for r in ed.get('add', []): wall_union = wall_union.union(rect(r))
         cut = wall_union.difference(op_union.buffer(0.001, join_style=2))
 
         wall_items = []

@@ -177,6 +177,52 @@ export function makeMaterials() {
     }
   });
 
+  // OSB board of the temporary entrance door (site photos 2026-11-21): random pressed strands, orange-brown
+  const osb = canvasTex(512, 1.2, (g, px) => {
+    noise(g, px, [190, 142, 82], 22, 91, 30);
+    const r = rng(93);
+    for (let i = 0; i < 520; i++) {
+      const l = 14 + r() * 46, w = 3 + r() * 7, x = r() * px, y = r() * px, a = r() * Math.PI;
+      const t = r();
+      g.save(); g.translate(x, y); g.rotate(a);
+      g.fillStyle = t < 0.4 ? `rgba(226,176,104,${0.35 + r() * 0.3})` : t < 0.75 ? `rgba(150,102,52,${0.3 + r() * 0.3})` : `rgba(96,62,30,${0.15 + r() * 0.2})`;
+      g.fillRect(-l / 2, -w / 2, l, w);
+      g.restore();
+    }
+  });
+  // bare construction-site sand (compacted, with a few darker pebbles)
+  const sand = canvasTex(512, 2.4, (g, px) => {
+    noise(g, px, [176, 158, 118], 34, 97, 90);
+    const r = rng(99);
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = `rgba(${r() > 0.5 ? '96,84,62' : '214,198,156'},${0.25 + r() * 0.3})`;
+      g.beginPath(); g.arc(r() * px, r() * px, 0.8 + r() * 2.2, 0, 7); g.fill();
+    }
+  });
+  // crushed stone pad in front of the door
+  const gravel = canvasTex(512, 1.0, (g, px) => {
+    noise(g, px, [128, 126, 120], 40, 101, 20);
+    const r = rng(103);
+    for (let i = 0; i < 900; i++) {
+      const v = 90 + r() * 110;
+      g.fillStyle = `rgba(${v},${v - 2},${v - 8},${0.5 + r() * 0.4})`;
+      g.beginPath(); g.ellipse(r() * px, r() * px, 2 + r() * 4, 1.5 + r() * 3, r() * 3, 0, 7); g.fill();
+    }
+  });
+
+  // raw cast concrete as on the entrance piers (site photos): mid grey, mottled, formwork marks
+  const rawConcreteTex = canvasTex(256, 1.5, (g, px) => {
+    noise(g, px, [158, 158, 153], 18, 121, 40);
+    const r = rng(123);
+    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${r() > 0.5 ? '110,110,106' : '196,196,190'},${0.1 + r() * 0.15})`; g.fillRect(r() * px, r() * px, 10 + r() * 50, 2 + r() * 6); }
+  });
+  // graphite EPS (Neopor-type) insulation board: dark grey, slightly speckled
+  const epsTex = canvasTex(256, 1.0, (g, px) => {
+    noise(g, px, [52, 52, 54], 14, 111, 10);
+    const r = rng(113);
+    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(${r() > 0.5 ? '120,120,122' : '20,20,22'},${0.15 + r() * 0.25})`; g.fillRect(r() * px, r() * px, 1 + r() * 2, 1 + r() * 2); }
+  });
+
   const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(p);
   return {
     concrete: pbr('screed', 3.0, { roughness: 0.95 }),            // raw concrete screed (photo scan)
@@ -188,6 +234,13 @@ export function makeMaterials() {
     wallTop: pbr('plaster', 1.0, { roughness: 0.95 }, 0.35), // caps: door/window soffits and wall tops
     grass: pbr('grass', 2.0, { roughness: 1 }),
     paving: pbr('paving', 1.8, { roughness: 0.9 }),
+    sand: std({ map: sand, roughness: 1 }),
+    gravel: std({ map: gravel, roughness: 1 }),
+    osb: std({ map: osb, roughness: 0.85 }),
+    zincHinge: std({ color: 0xc9a227, metalness: 0.6, roughness: 0.4 }),
+    rawConcrete: std({ map: rawConcreteTex, roughness: 0.95 }),
+    epsGraphite: std({ map: epsTex, roughness: 0.95 }),
+    dpm: std({ color: 0x151515, roughness: 0.7 }),
     rafters: pbr('pine', 0.74, { roughness: 0.85, side: THREE.DoubleSide }), // pine roof boarding between the rafters (photo scan)
     timber: pbr('pine', [0.74, 0.74], { roughness: 0.8 }),
     wool: std({ map: wool, roughness: 1, side: THREE.DoubleSide }),
