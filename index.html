@@ -37,6 +37,7 @@
       <div id="hint" class="hidden"></div>
       <div id="toast" class="hidden"></div>
       <div id="measure-status" class="hidden"></div>
+      <pre id="picks" class="hidden"></pre>
     </div>
 
     <div id="sim-time">
@@ -85,16 +86,18 @@
           <span><kbd>Y</kbd> pause / resume the clock (5 real min = 1 h)</span>
           <span><kbd>E</kbd> open/close door</span>
           <span><kbd>G</kbd> garage door design</span>
-          <span><kbd>N</kbd> next facade design · <kbd>Shift</kbd><kbd>N</kbd> previous</span>
+          <span><kbd>V</kbd> next facade design · <kbd>Shift</kbd><kbd>V</kbd> previous</span><span><kbd>N</kbd> navigation mode: <kbd>1</kbd> front · <kbd>2</kbd> back · <kbd>3</kbd> dining room (terrace) · <kbd>4</kbd> garage side · <kbd>F</kbd> flight (<kbd>Space</kbd> up, left <kbd>Shift</kbd> down; N starts as flying ghost) · <kbd>G</kbd> ghost (pass through everything)</span>
           <span>mouse — look</span>
           <span><kbd>M</kbd> minimap</span>
           <span><kbd>T</kbd> tape measure (click 2 points, cm) · <kbd>0</kbd> to floor · <kbd>1</kbd>–<kbd>4</kbd> to nearest … fourth nearest wall</span>
           <span><kbd>Esc</kbd> this menu</span>
         </div>
-        <h2>Facade design <kbd>N</kbd></h2>
+        <h2>Facade design <kbd>V</kbd></h2>
         <div id="facades" class="toggles"></div>
-        <h3>Colours (change anything after picking a design)</h3>
-        <div id="colours"></div>
+        <details id="colours-box">
+          <summary>Colours (change anything after picking a design)</summary>
+          <div id="colours"></div>
+        </details>
         <h2>Go to room</h2>
         <div id="rooms"></div>
       </div>

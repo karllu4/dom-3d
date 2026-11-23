@@ -179,7 +179,7 @@ export const FACADE_GLSL_BODY = /* glsl */ `
 
 /**
  * Cerrad Piatto Sand clinker facing (item 11306, 30 x 7.4 x 0.9 cm, sand/beige, hand-moulded look):
- * in the entrance recess round the door (back wall and its two returns, not the piers either side) and below the kitchen corner window (sill +0.88).
+ * in the entrance recess round the door (back wall only; the returns and piers either side keep the facade colour) and below the kitchen corner window (sill +0.88).
  */
 /** Clinker colours of the Cerrad Piatto range (a = main tone, b = second tone mixed in per slip) plus the free picker. */
 export const PAL_CLINKER: { n: string; a: string; b: string }[] = [
@@ -197,7 +197,7 @@ export function clinkerPair(a: string): { a: string; b: string } {
 export function clinkerLayers(a: string): Layer[] {
   const col = clinkerPair(a);
   return [
-    { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [4.38, 9.5, 6.52, 10.12] },   // only the recess round the door; the two front piers keep the facade colour
+    { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [4.42, 9.5, 6.68, 9.7], z: [-1, 2.72] },   // only the back wall of the recess; the piers and their returns (sides of the recess) keep the facade colour
     { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [-0.05, 9.5, 2.14, 9.66], z: [-1, 0.88] },
     { span: 'all', zone: 'ground', kind: 'clinker', ...col, box: [-0.05, 8.15, 0.5, 9.66], z: [-1, 0.88] },
   ];

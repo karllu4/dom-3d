@@ -10,7 +10,7 @@ npm install
 npm run dev          # http://localhost:5173  (open it in the Windows browser)
 ```
 
-Controls: click to walk in · `WASD` walk (2.6 m/s) · `Shift` run (5.5 m/s) · `Q` render quality (photo: ambient occlusion + sky lighting + AgX tone mapping / fast) · `C` crouch · mouse look ·
+Controls: click to walk in · `WASD` walk (2.6 m/s) · `Shift` run (5.5 m/s) · `Q` render quality (photo: ambient occlusion + sky lighting + AgX tone mapping / fast) · `C` crouch · `N` navigation mode (`1` front, `2` back, `3` dining room terrace, `4` garage side, `F` flight like Minecraft: Space up / left Shift down; N starts as flying ghost, `G` ghost: pass through any obstacle; click = read the point under the crosshair (x, y, z + which mesh; listed bottom-left, copied to clipboard; Z undo, X clear); `V` = next facade design) · mouse look ·
 `P` plan overlay on the floor · `R` roof · `U` attic · `L` light in your room, `L L` (double) all lights on your floor (lighting design per room in `lighting` in the config: opal ceiling lamps in rooms, 3 dining pendants, LED downlights only in hall/corridors/bathrooms, kitchen beam strip, bathroom mirror strip, garage/utility battens) · `O` overview (orbit) · `M` minimap · `T` tape measure (click two points at the crosshair, distance in cm; `N` vertex snap, `Z` undo, `X` clear) · `Esc` menu (teleport to any room).
 
 ## Checks
@@ -55,7 +55,8 @@ Orientation (fitted on the geoportal orthophoto, `site` in the config): the entr
   Rafters are 3D timbers 8×20 cm every ~90 cm (spacing assumed), plumb-cut at the eaves; hip/valley rafters same.
   Collar ties (jętki) 2×4×20 cm: J1 main roof underside +6.79, J2 west gable +6.59, east gable +6.55 (assumed).
   The roof plane is the underside of the rafters; membrane on the rafters, tiles `roof.thickness` (0.34 m) above.
-- Front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side follow the product photo on baranskidrzwi.pl. Opens/closes with `E`.
+- Entrance walls as on site (photos 2026-11-21): raw concrete piers either side of the recess, concrete lintel over the door opening, bare sand in front with a crushed-stone pad at the threshold (no paving yet). The door stays the planned one; the temporary OSB door seen on site (hinged on the right, opens outward, fixed OSB panel instead of the sidelight) is switchable in the facade menu ("Entrance door").
+- Planned front door Dz1: Barański DB 107 (linia Retro) in RAL 5011 with sidelight W1, opens outward. Leaf layout (3 raised panels), brass hardware and hinge side (left, owner's choice; the drawing has it on the sidelight side), four hinges and the sidelight bars follow the product drawing on baranskidrzwi.pl. Opens/closes with `E`.
 - Juliet balconies on the 4 attic balcony doors built from `balkon_francuski/*.dxf` (posts, 3 rails, balusters, rings, fixed anthracite, same as the roof tiles; facade designs do not change it).
 - One downstand beam between kitchen and dining (24 cm wide, underside +2.63 read from the plan label 311/263).
 - Garage door: Hörmann LPU 67 Thermo, L-ribbed, matt RAL 7016 anthracite (chosen, A); alternatives B oak Decograin, C flat RAL 5011 — `G` cycles, `E` opens.
