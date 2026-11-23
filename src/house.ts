@@ -250,14 +250,26 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
     entrance = { raw: pg, foam: mats.epsGraphite, foamGroup: foamG };
   }
 
+  // attic pier beside the entrance-gable window (site photo): graphite EPS boards on its front face and its east side, cut off by the roof; plastered over in a finished facade
+  if (entrance) {
+    const foam = clipAboveRoof(mats.epsGraphite, roofGLSL(h.roof, false), clip);
+    const t = 0.02;
+    const front = box(6.40, 10.097, 3.4, 6.999, 10.097 + t, 7.4, foam);
+    entrance.raw.add(front);
+  }
+
   buildStairs(h, mats, levels, world);
   const roof = buildRoof(h, mats);
   root.add(roof);
   buildOutside(h, mats, root, world);
+  root.add(buildGutters(h, mats));
 
   // planned attic ceiling & insulation (toggle I): wool group and plasterboard group, both hidden at start
   let finish: HouseScene['finish'];
   if (h.atticFinish) {
+    // wool and plasterboard are cut off wherever they would stick out through the roof (valleys, hips, gable cheeks)
+    const glslFull = roofGLSL(h.roof, false);
+    const woolM = clipAboveRoof(mats.wool, glslFull, 0), boardM = clipAboveRoof(mats.plasterboard, glslFull, 0);
     const af = h.atticFinish;
     const s = Math.sqrt(1 + h.roof.k * h.roof.k);
     const wool = new THREE.Group(), board = new THREE.Group();
@@ -266,15 +278,15 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       for (const sp of r.slopes) {
         // layer 1 between the rafters: up to 5 cm under the boarding; layer 2 under the rafters
         const top = af.woolBetween * s, under = -af.woolUnder * s;
-        wool.add(mesh(slopedGeometry(sp, sp.plane, top, false), mats.wool, false));
-        wool.add(mesh(slopedGeometry(sp, sp.plane, under, false), mats.wool, false));
-        board.add(mesh(slopedGeometry(sp, sp.plane, under - af.board * s, false), mats.plasterboard));
+        wool.add(mesh(slopedGeometry(sp, sp.plane, top, false), woolM, false));
+        wool.add(mesh(slopedGeometry(sp, sp.plane, under, false), woolM, false));
+        board.add(mesh(slopedGeometry(sp, sp.plane, under - af.board * s, false), boardM));
       }
       for (const fp of r.flats) {
         // 30 cm wool lying on the ceiling (top and bottom only: its sides are against the walls)
-        wool.add(mesh(flatGeometry(fp, r.ceil + af.woolFlat, true), mats.wool, false));
-        wool.add(mesh(flatGeometry(fp, r.ceil + af.board, false), mats.wool, false));
-        board.add(mesh(flatGeometry(fp, r.ceil, false), mats.plasterboard));
+        wool.add(mesh(flatGeometry(fp, r.ceil + af.woolFlat, true), woolM, false));
+        wool.add(mesh(flatGeometry(fp, r.ceil + af.board, false), woolM, false));
+        board.add(mesh(flatGeometry(fp, r.ceil, false), boardM));
       }
     }
     // insulation tunnel round the steel ridge beam where it hangs below the rising ceiling (north end of 2/8)
@@ -321,8 +333,8 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
           g.computeVertexNormals();
           grp.add(mesh(g, mat, shadow));
         };
-        build(0, zb, yE, board, mats.plasterboard, true);
-        build(af.board, zb + af.board, yE - af.board, wool, mats.wool, false, 0.08);
+        build(0, zb, yE, board, boardM, true);
+        build(af.board, zb + af.board, yE - af.board, wool, woolM, false, 0.08);
       }
     }
     // step walls: where the rising lining (2/8) meets the flat ceiling beside it, the lining stands higher than the flat ceiling, so a
@@ -362,8 +374,8 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
             g.computeVertexNormals();
             grp.add(mesh(g, mat, shadow));
           };
-          wall(0, room.ceil, 0.01, board, mats.plasterboard, true);                       // room side: board down to the flat ceiling
-          wall(af.board, room.ceil + af.board, 0.14, wool, mats.wool, false);              // wool behind it, reaching up into the lining layers
+          wall(0, room.ceil, 0.01, board, boardM, true);                       // room side: board down to the flat ceiling
+          wall(af.board, room.ceil + af.board, 0.14, wool, woolM, false);              // wool behind it, reaching up into the lining layers
         }
       }
     }
@@ -384,14 +396,14 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         g.computeVertexNormals();
         grp.add(mesh(g, mat, shadow));
       };
-      panel(0.005, mats.wool, wool, false);
-      panel(af.board + 0.005, mats.plasterboard, board, true);
+      panel(0.005, woolM, wool, false);
+      panel(af.board + 0.005, boardM, board, true);
     }
     // roof windows / hatch: plasterboard reveal through the extra lining depth (down to the board face)
     for (const it of h.roof.items) {
-      const reveal = mats.plasterboard;
+      const reveal = boardM;
       board.add(mesh(slopedSkirt(rectPoly(it.rect), it.plane, -(af.woolUnder + af.board) * s, 0), reveal));
-      wool.add(mesh(slopedSkirt(rectPoly(it.rect), it.plane, -af.woolUnder * s, af.woolBetween * s), mats.wool, false));
+      wool.add(mesh(slopedSkirt(rectPoly(it.rect), it.plane, -af.woolUnder * s, af.woolBetween * s), woolM, false));
     }
     // triangular wall pieces between the main roof and the bay roofs (2/2, 2/5): wool + plasterboard on the
     // room side, from the main slope lining up to the bay roof, so the insulation is continuous
@@ -469,8 +481,8 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         const mk = (g: number, z0: number, mat: THREE.Material, grp: THREE.Group) => grp.add(r0.alongX
           ? box(lo, c0 + g, z0, hi, c1 - g, r0.zt, mat)
           : box(c0 + g, lo, z0, c1 - g, hi, r0.zt, mat));
-        mk(0, r0.zb, mats.plasterboard, board);
-        mk(af.board, r0.zb + af.board, mats.wool, wool);
+        mk(0, r0.zb, boardM, board);
+        mk(af.board, r0.zb + af.board, woolM, wool);
       }
     }
     for (const st of af.steps ?? h.roof.steps) {
@@ -486,7 +498,7 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
         return liningAt(x - nx * 0.02, y - ny * 0.02, st.lo[t] - dropV);
       };
       // visible 15 cm edge of the wool slab along its lower edge (where it meets the slope lining)
-      const edge = (o0: number, o1: number, grp: THREE.Group, mat: THREE.Material = mats.wool) => {
+      const edge = (o0: number, o1: number, grp: THREE.Group, mat: THREE.Material = woolM) => {
         // each corner sits on the sloped lining at its own position, so the strip lies flush with the slope
         const P = (t: number, o: number): number[] => {
           const x = (t ? x1 : x0) + nx * o, y = (t ? y1 : y0) + ny * o;
@@ -520,10 +532,10 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       // the step is a framed triangle: its wool sits inside the frame (flush with the wall), the double plasterboard
       // is fixed straight onto it, so the lining stays flat instead of forming a 15 cm box below the lower slope
       const tb = af.board + 0.005;
-      panel(0.005, mats.wool, wool);
-      panel(tb, mats.plasterboard, board);
-      edge(0.005, tb, board, mats.plasterboard);   // closes the joint with the slope lining
-      panel(0.003, mats.plasterboard, board);      // white backing on the wall: anything seen through a seam is board, not timber
+      panel(0.005, woolM, wool);
+      panel(tb, boardM, board);
+      edge(0.005, tb, board, boardM);   // closes the joint with the slope lining
+      panel(0.003, boardM, board);      // white backing on the wall: anything seen through a seam is board, not timber
     }
     // seams along valleys/hips between two lined slopes: a narrow plasterboard strip just behind the joint
     const fpAttic = h.levels[1].footprint;
@@ -546,7 +558,7 @@ export function buildHouse(h: HouseJ, mats: Materials): HouseScene {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
       geo.computeVertexNormals();
-      board.add(mesh(geo, mats.plasterboard, false));
+      board.add(mesh(geo, boardM, false));
     }
     wool.visible = board.visible = false;
     levels['poddasze'].add(wool, board);
@@ -839,6 +851,96 @@ function buildChimney(g: THREE.Group, h: HouseJ, mats: Materials) {
       slabOnPlane(g, B, 0, 0, wx1 - wx0, (wy1 - wy0) * 1.27, h.roof.thickness + 0.06, h.roof.thickness + 0.1, mats.flashing);
     }
   }
+}
+
+/**
+ * Rain gutters along every low eave (half-round, anthracite, hung just below the roof edge) and the downpipes:
+ * a short drop, an offset back under the overhang to the wall, then straight down. Positions of the downpipes are
+ * fixed plan points (outlet on the eave, wall face it runs down).
+ */
+function buildGutters(h: HouseJ, mats: Materials): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'gutters';
+  const roofH = makeRoofHeight(h.roof);
+  const R = 0.07, offOut = 0.09, rimAbove = 0.16;       // gutter radius, distance outside the roof edge, rim height above the eave line
+  const mat = mats.fascia;
+  const zOf = (fl: { p: number[]; plane: number[] }, x: number, y: number) => fl.plane[0] * x + fl.plane[1] * y + fl.plane[2];
+  for (const fl of h.roof.flashing ?? []) {
+    const [x0, y0, x1, y1] = fl.p;
+    const z = zOf(fl, x0, y0);
+    if (Math.abs(z - zOf(fl, x1, y1)) > 1e-3 || z > 4.8) continue;           // only level edges that are real low eaves
+    const full = Math.hypot(x1 - x0, y1 - y0);
+    if (full < 1) continue;
+    // runs stay separate at outer corners (a 12 cm gap); where the eave meets a gable wall the gutter runs right up to it
+    const meets = (ex: number, ey: number) => (h.roof.flashing ?? []).some((o) => o !== fl && (Math.abs(o.p[1] - o.p[3]) < 1e-6) !== (Math.abs(y1 - y0) < 1e-6) && [[o.p[0], o.p[1]], [o.p[2], o.p[3]]].some(([qx, qy]) => Math.hypot(qx - ex, qy - ey) < 0.02) && Math.abs(zOf(o, o.p[0], o.p[1]) - zOf(o, o.p[2], o.p[3])) < 1e-3 && zOf(o, o.p[0], o.p[1]) < 4.8);
+    const gapA = meets(x0, y0) ? 0.12 : 0.0, gapB = meets(x1, y1) ? 0.12 : 0.0, len = full - gapA - gapB;
+    const alongX = Math.abs(y1 - y0) < 1e-6;
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    // outward = the side of the edge with no roof
+    const n: [number, number] = alongX ? [0, 1] : [1, 0];
+    const a = roofH(mx + n[0] * 0.15, my + n[1] * 0.15) === -Infinity, b = roofH(mx - n[0] * 0.15, my - n[1] * 0.15) === -Infinity;
+    if (a === b) continue;
+    const sgn = a ? 1 : -1;
+    // an eave that hangs over another roof (main roof over the garage roof) drains onto it: no gutter there
+    if (roofH(mx + sgn * n[0] * 1.2, my + sgn * n[1] * 1.2) !== -Infinity) continue;
+    const ux = (x1 - x0) / full, uy = (y1 - y0) / full;
+    const mx2 = x0 + ux * (gapA + len / 2), my2 = y0 + uy * (gapA + len / 2);
+    const cx = mx2 + sgn * n[0] * offOut, cy = my2 + sgn * n[1] * offOut;
+    const geo = alongX
+      ? new THREE.CylinderGeometry(R, R, len, 20, 1, true, Math.PI, Math.PI)
+      : new THREE.CylinderGeometry(R, R, len, 20, 1, true, -Math.PI / 2, Math.PI);
+    if (alongX) geo.rotateZ(Math.PI / 2); else geo.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(cx, z + rimAbove, cy);
+    m.castShadow = true;
+    g.add(m);
+    // end caps and the front bead
+    for (const [ex, ey] of [[x0 + ux * gapA, y0 + uy * gapA], [x1 - ux * gapB, y1 - uy * gapB]]) {
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(R, 16, alongX ? Math.PI : -Math.PI / 2, Math.PI), mat);
+      if (alongX) cap.rotation.y = Math.PI / 2; else cap.rotation.y = 0;
+      cap.position.set(ex + sgn * n[0] * offOut, z + rimAbove, ey + sgn * n[1] * offOut);
+      g.add(cap);
+    }
+  }
+  // downpipes only where the owner marked the outlets on the site photos (2026-11-22). Each leaves the gutter, takes the shortest 45-degree run
+  // to the wall under the overhang, and then goes straight down the wall face.
+  const groundZ = h.outside.groundZ;
+  const pipe = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
+    const A = new THREE.Vector3(ax, az, ay), B = new THREE.Vector3(bx, bz, by);
+    const d = B.clone().sub(A), L = d.length();
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, L, 14), mat);
+    cyl.position.copy(A).add(B).multiplyScalar(0.5);
+    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    cyl.castShadow = true;
+    g.add(cyl);
+  };
+  const out = 0.04 + 0.003;                                      // pipe radius + 3 mm: the pipe touches the wall
+  const pipes: { name: string; o: [number, number]; w: [number, number]; z: number; floor: number }[] = [
+    { name: 'front, left block', o: [3.4, 10.197 + offOut], w: [3.4, 9.597 + out], z: 4.5, floor: groundZ },
+    { name: 'east, garage', o: [14.6 + offOut, 12.5], w: [14.001 + out, 12.5], z: 3.19, floor: groundZ },   // ~50 cm from the garage's front-east corner (owner marked it on a screenshot)
+    { name: 'back, east part', o: [13.4, -0.6 - offOut], w: [13.4, 0.597 - out], z: 4.03, floor: groundZ },   // the back wall here is at y 0.597 (stepped back from the 0.0 of the corner bays)
+    { name: 'back, over the terrace pier', o: [0.32, -0.6 - offOut], w: [0.32, -0.004 - out], z: 4.03, floor: -0.02 },   // down the front of the west terrace pier (x 0-0.64, face y 0.0) to the terrace floor   // ends on the terrace slab (top 3.33)
+  ];
+  for (const p of pipes) {
+    const zOut = p.z + rimAbove - R;                             // bottom of the gutter at the outlet
+    const dist = Math.hypot(p.w[0] - p.o[0], p.w[1] - p.o[1]);
+    const zBend = zOut - 0.1 - dist;                             // shortest run to the wall: 45 degrees
+    pipe(p.o[0], p.o[1], zOut, p.o[0], p.o[1], zOut - 0.1);      // outlet stub
+    pipe(p.o[0], p.o[1], zOut - 0.1, p.w[0], p.w[1], zBend);     // to the wall
+    pipe(p.w[0], p.w[1], zBend, p.w[0], p.w[1], p.floor + 0.18); // straight down the wall
+    // wall brackets: a collar round the pipe and a plate fixing it to the wall, every ~90 cm and right under the bend
+    const nx = (p.w[0] - p.o[0]) / (dist || 1), ny = (p.w[1] - p.o[1]) / (dist || 1);   // direction towards the wall
+    for (let zc = zBend - 0.2; zc > p.floor + 0.35; zc -= 0.9) {
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.035, 14), mat);
+      collar.position.set(p.w[0], zc, p.w[1]);
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(nx) > 0.5 ? 0.05 : 0.06, 0.04, Math.abs(nx) > 0.5 ? 0.06 : 0.05), mat);
+      plate.position.set(p.w[0] + nx * 0.045, zc, p.w[1] + ny * 0.045);        // reaches from the pipe axis to the wall face
+      g.add(collar, plate);
+    }
+    const kx = p.o[0] - p.w[0], ky = p.o[1] - p.w[1], kl = Math.hypot(kx, ky) || 1;
+    pipe(p.w[0], p.w[1], p.floor + 0.18, p.w[0] + (kx / kl) * 0.16, p.w[1] + (ky / kl) * 0.16, p.floor + 0.08);   // shoe kicking out above the ground
+  }
+  return g;
 }
 
 function buildOutside(h: HouseJ, mats: Materials, root: THREE.Group, world: World) {

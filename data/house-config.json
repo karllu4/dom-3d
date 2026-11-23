@@ -104,7 +104,7 @@
     "railings": [ [[6.80, 5.33], [10.24, 5.33]], [[6.80, 5.33], [6.80, 6.37]] ]
   },
 
-  "_roof": "wallRect = extent of the bay walls (Elewacje): walls rise to a gable roof only there; outside it the gable rake overhangs the main roof. Roof = max over parts, each part = min over its planes h = a*x + b*y + c (h = top of wall plate / underside of rafters). All pitches 38 deg (k = tan 38 = 0.7813). Read from Rzut dachu: main ridge y=5.10 @ +8.48, west cross-gable ridge x=6.05 @ +7.59, east cross-gable ridge x=5.45 @ +7.55, garage hip ridge x=10.5 @ +6.39.",
+  "_roof": "Eaves/verges project 60 cm from the outer wall faces (owner, 2026-11-22): rect = wall face +/- 0.6 (left block front wall y 9.597, entrance gable front y 10.097, garage walls x 6.999 / 14.001 / y 12.996). wallRect = extent of the bay walls (Elewacje): walls rise to a gable roof only there; outside it the gable rake overhangs the main roof. Roof = max over parts, each part = min over its planes h = a*x + b*y + c (h = top of wall plate / underside of rafters). All pitches 38 deg (k = tan 38 = 0.7813). Read from Rzut dachu: main ridge y=5.10 @ +8.48, west cross-gable ridge x=6.05 @ +7.59, east cross-gable ridge x=5.45 @ +7.55, garage hip ridge x=10.5 @ +6.39.",
   "roof": {
     "k": 0.7813,
     "thickness": 0.34,
@@ -116,11 +116,13 @@
       { "name": "J2 west", "ridgeAxis": "x", "ridgeAt": 6.05, "ridgeZ": 7.59, "z": 6.59 },
       { "name": "east",    "ridgeAxis": "x", "ridgeAt": 5.45, "ridgeZ": 7.55, "z": 6.55 } ] },
     "parts": [
-      { "name": "main-south", "rect": [-0.7, -1.1, 3.96, 10.6], "wallClip": [-0.7, -1.1, 3.96, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
-      { "name": "main-north", "rect": [3.96, -0.4, 14.7, 10.6], "wallClip": [3.96, -0.4, 14.7, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
-      { "name": "west-gable", "rect": [3.16, -0.5, 8.94, 5.10], "wallRect": [3.71, -0.5, 8.29, 5.10], "ridge": { "axis": "x", "at": 6.05, "z": 7.59 } },
-      { "name": "east-gable", "rect": [3.16, 5.10, 7.74, 10.6], "wallRect": [3.8, 5.10, 6.99, 10.6], "ridge": { "axis": "x", "at": 5.45, "z": 7.55 } },
-      { "name": "garage-hip", "rect": [6.3, 5.10, 14.7, 13.7], "hip": { "eaveZ": 3.11, "edges": ["x0", "x1", "y1"] } }
+      { "name": "main-south", "rect": [-0.6, -0.6, 3.71, 10.197], "wallClip": [-0.6, -0.6, 3.71, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "main-south-b", "rect": [3.71, -0.5, 3.96, 10.197], "wallClip": [3.71, -0.5, 3.96, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "main-north", "rect": [3.96, -0.5, 8.29, 10.197], "wallClip": [3.96, -0.5, 8.29, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "main-north-b", "rect": [8.29, -0.6, 14.6, 10.197], "wallClip": [8.29, -0.6, 14.6, 10.1], "ridge": { "axis": "y", "at": 5.10, "z": 8.48 } },
+      { "name": "west-gable", "rect": [3.11, -0.62, 8.89, 5.10], "wallRect": [3.71, -0.5, 8.29, 5.10], "ridge": { "axis": "x", "at": 6.05, "z": 7.59 } },
+      { "name": "east-gable", "rect": [3.2, 5.10, 7.59, 10.697], "wallRect": [3.8, 5.10, 6.99, 10.6], "wallClip": [3.8, 5.10, 7.05, 10.1], "ridge": { "axis": "x", "at": 5.45, "z": 7.55 } },
+      { "name": "garage-hip", "rect": [6.4, 5.10, 14.6, 13.6], "hip": { "eaveZ": 3.189, "edges": ["x0", "x1", "y1"] } }
     ]
   },
 

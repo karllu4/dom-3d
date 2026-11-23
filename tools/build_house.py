@@ -448,6 +448,15 @@ def main():
             mx, my = ov.interpolate(0.5, normalized=True).coords[0]
             if Hp(faces[fj]['plane'], mx, my) >= Hp(pl, mx, my) - 0.01:
                 cover.append(ov.buffer(0.006, cap_style=2))
+        # an edge that lies inside another roof part which is higher there (main eave running in front of a gable) is not an edge
+        for pt in out['roof']['parts']:
+            x0_, y0_, x1_, y1_ = pt.get('wallRect', pt['rect'])
+            sub = box(x0_, y0_ - 0.001, x1_, y1_)
+            for ov in getattr(e.intersection(sub), 'geoms', [e.intersection(sub)]):
+                if not isinstance(ov, LineString) or ov.length < 0.01: continue
+                mx, my = ov.interpolate(0.5, normalized=True).coords[0]
+                hh = min(Hp(q, mx, my) for q in pt['planes']) if pt['planes'] else -1e9
+                if hh > Hp(pl, mx, my) + 0.05 and ov.length < e.length - 0.01: cover.append(ov.buffer(0.006, cap_style=2))
         free = e.difference(unary_union(cover)) if cover else e
         for g in getattr(free, 'geoms', [free]):
             if isinstance(g, LineString) and g.length > 0.03:
