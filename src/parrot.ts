@@ -74,6 +74,7 @@ export function buildMacaw(): THREE.Group {
   /** flat feather: capsule squashed in z, long axis along y (pointing down when rotated by the caller) */
   const feather = (len: number, w: number) => { const gg = new THREE.CapsuleGeometry(w / 2, Math.max(0.001, len - w), 4, 10); gg.scale(1, 1, 0.22); return gg; };
 
+  bird.userData.wings = [];   // live parrot (parrotbird.ts) flaps these
   // ---- body (leaning forward a little)
   const body = new THREE.Group(); body.rotation.x = 0.16; body.position.set(0, 0.02, -0.02); bird.add(body);
   const prof: [number, number][] = [[0.0, 0.06], [0.036, 0.075], [0.062, 0.12], [0.074, 0.19], [0.071, 0.26], [0.058, 0.33], [0.043, 0.39], [0.037, 0.435], [0, 0.45]];
@@ -111,7 +112,7 @@ export function buildMacaw(): THREE.Group {
 
   // ---- wings, folded along the body: red coverts, yellow band, green-blue greater coverts, blue flight feathers
   for (const sx of [-1, 1]) {
-    const w = new THREE.Group(); w.position.set(sx * 0.071, 0.345, -0.012); w.rotation.set(0.05, 0, sx * -0.05); body.add(w);
+    const w = new THREE.Group(); w.position.set(sx * 0.071, 0.345, -0.012); w.rotation.set(0.05, 0, sx * -0.05); body.add(w); bird.userData.wings.push({ g: w, sx });
     add(w, sph(0.021, 0.1, 0.06), redM, 0, -0.09, 0).rotation.z = sx * 0.02;                // shoulder / lesser coverts
     add(w, sph(0.02, 0.05, 0.05), yellowM, sx * 0.004, -0.17, -0.004);                       // median coverts: yellow
     add(w, sph(0.019, 0.045, 0.048), greenM, sx * 0.005, -0.225, -0.006);                    // greater coverts: green
