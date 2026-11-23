@@ -9,6 +9,9 @@ import './style.css';
 import type { HouseJ } from './types';
 import { makeMaterials } from './materials';
 import { Zombie, ZOMBIE_ROUTE } from './zombie';
+import { LiveParrot } from './parrotbird';
+import { Skeleton } from './skeleton';
+import { Dog } from './dog';
 import { FACADE_STYLES, PAL_WALL, PAL_DOOR, PAL_GATE, applyFacadeUniforms, clinkerLayers, clinkerPair, CLINKER_DEFAULT, PAL_CLINKER } from './facade';
 import type { FacadeStyle, Layer, Swatch } from './facade';
 import { buildHouse } from './house';
@@ -216,7 +219,53 @@ async function main() {
     const z = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world, spawned++ % ZOMBIE_ROUTE.length);
     zombies.push(z); scene.add(z.group);
   };
-  spawnZombie();
+  const skeletons: Skeleton[] = [];
+  let skSpawned = 0;
+  const spawnSkeletons = () => { const n = 1 + Math.floor(Math.random() * 2); for (let i = 0; i < n && skeletons.length < 6; i++) { const k = new Skeleton(house.outside.groundZ, hs.world, skSpawned++ * 3 + 2); skeletons.push(k); scene.add(k.group); } };
+  const spawnBoss = () => { if (zombies.some((z) => z.isBoss) || zombies.length >= MAX_ZOMBIES) return false; const z = new Zombie(house.outside.groundZ, ZOMBIE_ROUTE, hs.world, spawned++ % ZOMBIE_ROUTE.length).makeBoss(); zombies.push(z); scene.add(z.group); return true; };
+  let bossRose = false;
+  const spawnWave = () => { const n = 1 + Math.floor(Math.random() * 3); let made = 0; for (let i = 0; i < n && zombies.length < MAX_ZOMBIES; i++, made++) spawnZombie(); spawnSkeletons(); bossRose = Math.random() < 0.3 && spawnBoss(); return made; };
+  spawnWave();
+
+  // ---------- live macaw: E next to its cage opens / closes it; open = it hunts zombies outside, closed = it flies back in
+  const staticMacaw: THREE.Object3D[] = [];
+  scene.traverse((o) => { if (o.name === 'macaw') staticMacaw.push(o); });
+  const parrotHome = new THREE.Vector3(8.29, 4.865, 3.717);
+  if (staticMacaw[0]) staticMacaw[0].getWorldPosition(parrotHome);
+  staticMacaw.forEach((o) => { o.visible = false; });
+  const parrot = new LiveParrot(parrotHome, house.levels[0].footprint, house.outside.groundZ, (m) => toast(m));
+  scene.add(parrot.group);
+  // ---------- Jack Russell terrier: stays with you outside and hunts the skeletons that rise with the zombies
+  const dog = new Dog(house.outside.groundZ, hs.world, house.levels[0].footprint, (m) => toast(m));
+  scene.add(dog.group);
+  // food: a bowl of apples on the kitchen counter; E eats one (+1 life up to 3), they grow back after 30 s
+  const apples = new THREE.Group(); apples.name = 'apples';
+  {
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.1, 0.07, 20), new THREE.MeshStandardMaterial({ color: 0xe9e4da, roughness: 0.5 }));
+    bowl.position.y = 0.035; apples.add(bowl);
+    const red = new THREE.MeshStandardMaterial({ color: 0xc0261f, roughness: 0.45 }), green = new THREE.MeshStandardMaterial({ color: 0x7fb33a, roughness: 0.45 });
+    [[0.0, 0.0, red], [0.1, 0.05, green], [-0.08, 0.07, red], [0.03, -0.1, green]].forEach(([x, z, m], i) => {
+      const a = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), m as THREE.Material); a.position.set(x as number, 0.1 + (i === 0 ? 0.05 : 0), z as number); a.castShadow = true; apples.add(a);
+    });
+    apples.position.set(2.4, 0.9, 8.86); scene.add(apples);
+  }
+  let appleCd = 0;
+  const food = {
+    open: false, center: [2.4, 8.86] as [number, number], floorZ: 0, label: 'Apples (+1 life)',
+    toggle() {
+      if (appleCd > 0) { toast('The bowl is empty – the apples grow back soon'); return; }
+      if (lives >= 3) { toast('You are at full health (3 lives)'); return; }
+      lives++; renderLives(); appleCd = 30; apples.visible = false; toast(`You eat an apple: ${lives} lives`);
+    },
+    update(dt: number) { if (appleCd > 0) { appleCd -= dt; if (appleCd <= 0) apples.visible = true; } },
+  };
+  hs.doors.push(food);
+  const cageDoor = {
+    open: false, center: [8.35, 3.45] as [number, number], floorZ: 3.34, label: 'Macaw cage',
+    toggle() { this.open = !this.open; if (this.open) { parrot.release(); toast('Cage open: the macaw hunts zombies outside'); } else { parrot.recall(); toast('Cage closed: the macaw flies back'); } },
+    update() { /* nothing to animate */ },
+  };
+  hs.doors.push(cageDoor);
 
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(7, 2, 6.5);
@@ -319,8 +368,8 @@ async function main() {
     for (const z of zombies) if (z.hit(origin, dir, 15, 0.12)) { const d = origin.distanceTo(z.group.position); if (d < td) { td = d; target = z; } }
     if (target) {
       const left = target.hurt();
-      if (left > 0) toast(`Hit! ${left} more hit${left > 1 ? 's' : ''} to go`);
-      else { kills++; toast(`The zombie turns into a crimson quail and flies away! (${kills})`); }
+      if (left > 0) toast(target.isBoss ? `Boss hit! ${left} left` : `Hit! ${left} more hit${left > 1 ? 's' : ''} to go`);
+      else { kills++; toast(target.isBoss ? `The BOSS is defeated! (${kills})` : `The zombie turns into a crimson quail and flies away! (${kills})`); }
     }
     const len = target ? td : 9;
     const right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
@@ -334,6 +383,18 @@ async function main() {
   document.addEventListener('mousedown', (e) => {
     if (e.button === 0 && !tape.active && !navMode && player.controls.isLocked && !overview) shoot();   // no beam while navigating / building
   });
+  // lives: 3, a hit takes one and gives you 1 s to run; apples in the kitchen give one back (never above 3)
+  let lives = 3, invuln = 0;
+  const livesEl = $('lives');
+  const renderLives = () => { livesEl.innerHTML = [0, 1, 2].map((i) => `<span class="${i < lives ? '' : 'off'}">\u2665</span>`).join(''); };
+  renderLives();
+  const loseLife = (attacker: { repel: (from: THREE.Vector3) => void }) => {
+    attacker.repel(camera.position);
+    lives--; invuln = 1.0; hurtT = 0.6; hurt.style.opacity = '0.6';
+    renderLives();
+    if (lives <= 0) { lives = 3; renderLives(); caughtByZombie(); toast('Out of lives… you wake up in bed with full health'); }
+    else toast(`Hit! ${lives} li${lives === 1 ? 'fe' : 'ves'} left – run!`);
+  };
   const caughtByZombie = () => {
     hurtT = 1.2; hurt.style.opacity = '0.85';
     player.crouch = false;
@@ -636,7 +697,7 @@ async function main() {
   $('back').onclick = () => toggleOverview();
 
   // handle for automated screenshots / debugging from the console
-  Object.assign(window, { dom3d: { zombies, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
+  Object.assign(window, { dom3d: { spawnBoss, dog, skeletons, parrot, zombies, setFacade, setLook: (patch: Partial<Look>) => { look = { ...look, ...patch, styleId: 'custom' }; applyLook(); }, player, camera, actions, house, world: hs.world, scene, renderer, menu, doors: hs.doors, roomLights, setLight, pressL, tape, quality } });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -693,16 +754,30 @@ async function main() {
     for (const d of hs.doors) d.update(dt);
     tickSimClock();
     spawnT += dt;
-    if (spawnT >= 60) { spawnT = 0; if (zombies.length < MAX_ZOMBIES) { spawnZombie(); if (sunElev < -4) toast('Another zombie rises…'); } }
+    if (spawnT >= 60) { spawnT = 0; const n = spawnWave(); if (bossRose && sunElev < -4) toast('A BOSS rises! Only your light can kill it – keep the dog and the macaw away'); else if (n && sunElev < -4) toast(n === 1 ? 'Another zombie rises…' : `${n} zombies rise…`); }
     for (let i = zombies.length - 1; i >= 0; i--) {
       const z = zombies[i];
       z.update(dt, sunElev < -4, camera.position);
       if (z.dead) { scene.remove(z.group); zombies.splice(i, 1); }
     }
+    parrot.update(dt, zombies, camera.position);
+    for (let i = skeletons.length - 1; i >= 0; i--) { skeletons[i].update(dt, sunElev < -4); if (skeletons[i].dead) { scene.remove(skeletons[i].group); skeletons.splice(i, 1); } }
+    dog.update(dt, skeletons, camera.position);
+    for (const z of zombies) {                       // the boss knocks the dog and the macaw down
+      if (!z.isBoss || !z.risen) continue;
+      const zp = z.group.position;
+      if (Math.hypot(dog.group.position.x - zp.x, dog.group.position.z - zp.z) < 1.5) dog.knockDown(4);
+      if (parrot.free && parrot.position.distanceTo(new THREE.Vector3(zp.x, zp.y + 1.5, zp.z)) < 2.2) parrot.knockDown(4);
+    }
     shotCd -= dt;
     if (beamT > 0) { beamT -= dt; if (beamT <= 0) { beam.visible = false; flash.intensity = 0; } else (beam.material as THREE.MeshBasicMaterial).opacity = 0.7 * (beamT / 0.14); }
     if (hurtT > 0) { hurtT -= dt; hurt.style.opacity = String(Math.max(0, Math.min(0.85, hurtT / 1.2 * 0.85))); }
-    if (!overview && zombies.some((z) => z.caught)) caughtByZombie();
+    invuln -= dt;
+    if (!overview && invuln <= 0) {
+      const zc = zombies.find((z) => z.caught);
+      if (zc) loseLife(zc);
+      else { const sk = skeletons.find((k) => k.touches(camera.position)); if (sk) loseLife(sk); }
+    }
     if (overview) {
       orbit.update();
     } else {
@@ -719,7 +794,11 @@ async function main() {
       const hint = $('hint');
       hint.textContent = near ? `${isTouch ? 'Door button' : 'E'} — ${near.open ? 'close' : 'open'} door · ${near.label}${near === hs.garage ? '  ·  G — next design' : ''}` : '';
       hint.classList.toggle('hidden', !near);
-      minimap.draw(level, player.pos.x, player.pos.y, player.yaw(), label?.id ?? null, site.planDownBearingDeg);
+      minimap.draw(level, player.pos.x, player.pos.y, player.yaw(), label?.id ?? null, site.planDownBearingDeg, [
+        ...zombies.filter((z) => z.risen).map((z) => ({ x: z.group.position.x, y: z.group.position.z, color: z.isBoss ? '#c04bff' : '#5fd35f' })),
+        ...skeletons.filter((k) => k.risen).map((k) => ({ x: k.group.position.x, y: k.group.position.z, color: '#f2f2ea' })),
+        { x: dog.group.position.x, y: dog.group.position.z, color: '#c9803c' },
+        ...(parrot.free ? [{ x: parrot.group.position.x, y: parrot.group.position.z, color: '#ffd23a' }] : [])]);
       $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}${player.ghost ? '  · GHOST' : player.fly ? '  · FLYING' : ''}${navMode ? '  · NAV' : ''}`;
     }
     tape.update(innerWidth, innerHeight, snap);

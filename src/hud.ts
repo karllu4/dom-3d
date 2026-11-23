@@ -48,7 +48,7 @@ export class Minimap {
   private T = (x: number, y: number): [number, number] =>
     [this.W / 2 + (x - this.view.cx) * this.view.s, this.H / 2 + (y - this.view.cy) * this.view.s];
 
-  draw(level: LevelJ, px: number, py: number, angle: number, current: string | null, planDownBearing = 90) {
+  draw(level: LevelJ, px: number, py: number, angle: number, current: string | null, planDownBearing = 90, markers: { x: number; y: number; color: string }[] = []) {
     const g = this.g, T = this.T;
     // target view: house bounds + player (with margin), fitted into the canvas
     const [hx0, hy0, hx1, hy1] = Minimap.HOUSE;
@@ -116,6 +116,15 @@ export class Minimap {
       g.lineTo(ox - ny * 4, oy + nx * 4); g.lineTo(ox + ny * 4, oy - nx * 4); g.closePath(); g.fill();
       g.font = 'bold 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText('N', ox + nx * 11, oy + ny * 11);
+    }
+
+    // zombies (green) and the macaw (yellow): dots, kept on the map edge when they are further away
+    for (const mk of markers) {
+      let [mx, my] = T(mk.x, mk.y);
+      const out = mx < 8 || mx > this.W - 8 || my < 8 || my > this.H - 8;
+      mx = Math.min(this.W - 8, Math.max(8, mx)); my = Math.min(this.H - 8, Math.max(8, my));
+      g.beginPath(); g.arc(mx, my, out ? 4 : 5.5, 0, Math.PI * 2);
+      g.fillStyle = mk.color; g.fill(); g.lineWidth = 2; g.strokeStyle = '#102010'; g.stroke();
     }
 
     // player: arrow with a white outline and a soft halo so it is visible on any background

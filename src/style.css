@@ -174,3 +174,6 @@ body.menu-open #sim-time { display: none; }
 
 #picks { position: fixed; left: 12px; bottom: 12px; max-width: 46vw; margin: 0; padding: 8px 10px; background: rgba(20,22,26,.82); color: #fff; font: 12px/1.45 ui-monospace, monospace; border-radius: 8px; white-space: pre-wrap; pointer-events: none; z-index: 20; }
 #picks.hidden { display: none; }
+
+#lives { position: fixed; left: 16px; top: 108px; font-size: 26px; letter-spacing: 3px; color: #e53b4a; text-shadow: 0 1px 3px rgba(0,0,0,.6); pointer-events: none; z-index: 6; }
+#lives .off { color: rgba(255,255,255,.28); }

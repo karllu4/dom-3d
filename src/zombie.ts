@@ -17,7 +17,7 @@ export class Zombie {
   private groundZ: number;
   private route: [number, number][];
   private world: World;
-  private mode: 'patrol' | 'chase' | 'flee' | 'dying' = 'patrol';
+  private mode: 'patrol' | 'chase' | 'flee' | 'scared' | 'dying' = 'patrol';
   private modeT = 0;          // time left in flee / time since the player was last seen while chasing
   private lost = 0;
   private flames: { m: THREE.Mesh; life: number; max: number }[] = [];
@@ -31,6 +31,16 @@ export class Zombie {
   /** set while the zombie is close enough to grab the player */
   caught = false;
   private groundNow = 0;
+  isBoss = false;
+  speedMul = 1;
+  private fleeTime = 3.5;
+  /** The boss: huge, dark purple, fast, many hits; only the player's light can kill it (the macaw and dog cannot) and it knocks them down. */
+  makeBoss() {
+    this.isBoss = true; this.hp = 14; this.speedMul = 1.9; this.fleeTime = 0.9;
+    this.group.scale.setScalar(1.7);
+    this.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && (m.material as THREE.MeshStandardMaterial).isMeshStandardMaterial) { m.material = (m.material as THREE.MeshStandardMaterial).clone(); (m.material as THREE.MeshStandardMaterial).color.multiply(new THREE.Color(0.55, 0.35, 0.8)); } });
+    return this;
+  }
 
   constructor(groundZ: number, route: [number, number][], world: World, startAt = 0) {
     this.groundZ = groundZ;
@@ -107,10 +117,24 @@ export class Zombie {
   hurt() {
     if (this.mode === 'dying') return this.hp;
     this.hp--;
-    if (this.hp > 0) { this.mode = 'flee'; this.modeT = 3.5; }
+    if (this.hp > 0) { this.mode = 'flee'; this.modeT = this.fleeTime; }
     else { this.mode = 'dying'; this.dieT = 0; this.root.visible = false; this.quail.visible = true; this.quail.position.y = 0.2; }
     return this.hp;
   }
+  peckHits = 0;
+  /** The macaw pecks it: after 4 pecks it dies (turns into the crimson quail). Returns pecks left. */
+  private scareFrom: THREE.Vector3 | null = null;
+  /** After it hit the player: it backs off for a couple of seconds so you can run. */
+  repel(from: THREE.Vector3) { if (this.mode === 'dying') return; this.mode = 'scared'; this.modeT = 2.5; this.scareFrom = from.clone(); this.caught = false; }
+  peck(from?: THREE.Vector3) {
+    if (this.mode === 'dying' || this.isBoss) return this.hp;
+    this.peckHits++;
+    if (this.peckHits >= 4) { this.hp = 1; this.hurt(); return 0; }
+    this.mode = 'scared'; this.modeT = 3.2; this.scareFrom = from ? from.clone() : null;     // runs away for a few seconds
+    return 4 - this.peckHits;
+  }
+  /** fully risen and alive (the macaw only goes for these) */
+  get risen() { return this.presence > 0.9 && this.mode !== 'dying'; }
   get burning() { return this.mode === 'flee' || this.mode === 'dying'; }
   get hunting() { return this.mode === 'chase'; }
   get alive() { return this.mode !== 'dying'; }
@@ -189,7 +213,7 @@ export class Zombie {
     const sameLevel = Math.abs(player.y - 1.7 - gr.position.y) < 1.8;
     const sees = dark && this.presence > 0.9 && pd < 11 && sameLevel
       && this.world.lineClear(gr.position.x, gr.position.z, px, pz, gr.position.y, 1.6);
-    if (this.mode === 'flee') {
+    if (this.mode === 'flee' || this.mode === 'scared') {
       this.modeT -= dt;
       if (this.modeT <= 0) this.mode = 'patrol';
     } else if (this.mode === 'patrol' && sees) { this.mode = 'chase'; this.lost = 0; }
@@ -202,6 +226,9 @@ export class Zombie {
     let want: number, speed: number;
     if (this.mode === 'chase') { want = Math.atan2(toPx, toPz); speed = 2.1; }
     else if (this.mode === 'flee') { want = Math.atan2(-toPx, -toPz); speed = 3.6; }
+    else if (this.mode === 'scared') {                 // pecked by the macaw: runs away from it (no fire)
+      const f = this.scareFrom; want = f ? Math.atan2(gr.position.x - f.x, gr.position.z - f.z) : Math.atan2(-toPx, -toPz); speed = 3.6;
+    }
     else {
       const target = this.route[this.wp];
       const dx = target[0] - gr.position.x, dz = target[1] - gr.position.z;
@@ -210,7 +237,7 @@ export class Zombie {
     }
     let d = want - this.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
     this.heading += d * Math.min(1, dt * (this.mode === 'patrol' ? 2.5 : 6));
-    speed *= Math.min(1, this.presence * 1.5);
+    speed *= Math.min(1, this.presence * 1.5) * this.speedMul;
     const nx = gr.position.x + Math.sin(this.heading) * speed * dt;
     const nz = gr.position.z + Math.cos(this.heading) * speed * dt;
     const pos = { x: nx, y: nz };
