@@ -18,6 +18,7 @@ import { buildLighting, setLight, setScene, nextScene, SCENE_NAMES, setAtticMoun
 import { buildFurniture } from './furniture';
 import { TapeMeasure } from './measure';
 import { isTouch, initTouch } from './touch';
+import { BuildTool, BUILD_KINDS } from './builder';
 
 const compass = (b: number) => ['N','NE','E','SE','S','SW','W','NW'][Math.round(((b % 360) + 360) % 360 / 45) % 8];
 
@@ -292,6 +293,34 @@ async function main() {
       if (d !== null) toast(`Distance: ${(d * 100).toFixed(1)} cm`);
     }
   });
+  // ---------- build tool (J): draw walls / OSB / foam boxes live; corners snap to the nearest existing plane
+  const build = new BuildTool(scene, camera, hs.world, mats);
+  const renderBuild = () => { const el = $('buildhud'); el.textContent = build.active ? build.status() : ''; el.classList.toggle('hidden', !build.active); };
+  document.addEventListener('mousedown', (e) => {
+    if (!build.active || !player.controls.isLocked || overview) return;
+    if (e.button === 2) { showToast(build.undo(), 1500); renderBuild(); return; }
+    if (e.button === 0) { showToast(build.click(), 3500); renderBuild(); }
+  }, true);
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyJ' && !e.repeat && !overview) {
+      const on = build.toggle();
+      if (on) { tape.active && toggleTape(); }
+      showToast(on ? 'Build tool: click two opposite corners (snap to planes). 1-6 material (6 = demolish) · , . thickness · H snap · Z undo' : 'Build tool off (pieces stay)', 3500);
+      renderBuild(); return;
+    }
+    if (!build.active) return;
+    const d = e.code.match(/^(Digit|Numpad)([1-6])$/);
+    if (d) { build.setKind(+d[2] - 1); showToast(`Material: ${BUILD_KINDS[+d[2] - 1].label}`, 1500); }
+    if (e.code === 'Comma') build.nudgeThickness(-0.005);
+    if (e.code === 'Period') build.nudgeThickness(0.005);
+    if (e.code === 'KeyH') build.snap = !build.snap;
+    if (e.code === 'KeyZ' || e.code === 'Backspace') showToast(build.undo(), 1500);
+    if (e.code === 'KeyX' && e.shiftKey) { build.clear(); showToast('All built pieces removed', 1500); }
+    if (e.code === 'Backslash') { navigator.clipboard?.writeText(build.exportText()).catch(() => {}); showToast(`${build.pieces.length} piece(s) copied to the clipboard`, 2500); }
+    renderBuild();
+  }, true);
+  document.addEventListener('contextmenu', (e) => { if (build.active) e.preventDefault(); });
+
   // ---------- navigation mode: click a point (crosshair) to read its coordinates; "P1 x y z · mesh" list stays on screen to quote back
   const picks: { p: THREE.Vector3; what: string }[] = [];
   const pickGroup = new THREE.Group();
@@ -309,7 +338,7 @@ async function main() {
     });
   };
   document.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || !navMode || tape.active || !player.controls.isLocked || overview) return;
+    if (e.button !== 0 || !navMode || tape.active || build.active || !player.controls.isLocked || overview) return;
     pickRay.setFromCamera(new THREE.Vector2(0, 0), camera);
     const hit = pickRay.intersectObjects(scene.children, true).find((h) => (h.object as THREE.Mesh).isMesh && shown(h.object) && h.object.parent !== pickGroup && !(h.object as THREE.Mesh).geometry.type.startsWith('Sphere'));
     if (!hit) { showToast('No surface at the crosshair'); return; }
@@ -324,7 +353,7 @@ async function main() {
     showToast(text + '  (all picks copied to the clipboard)', 4000);
   });
   addEventListener('keydown', (e) => {
-    if (!navMode || tape.active) return;
+    if (!navMode || tape.active || build.active) return;
     if (e.code === 'KeyX') { picks.length = 0; renderPicks(); }
     if (e.code === 'KeyZ') { picks.pop(); renderPicks(); }
   });
@@ -435,7 +464,7 @@ async function main() {
       if (navMode) player.setGhost(true); else { player.setFly(false); player.teleport(player.pos.x, player.pos.y, player.feet); }   // nav starts as a flying ghost; leaving lands you
       showToast(navMode ? 'Navigation (flying ghost): 1 front · 2 back · 3 dining room · 4 garage side · Space up · left Shift down · F flight · G ghost · click = read point · N exit' : 'Navigation off', 5000);
     }
-    if (navMode && !tape.active && !e.repeat && !overview) {
+    if (navMode && !tape.active && !build.active && !e.repeat && !overview) {
       const sides: Record<string, [number, number, number, string]> = {
         Digit1: [7.5, 22, 0, 'front (entrance + garage)'], Digit2: [7.5, -14, 180, 'back (garden)'],
         Digit3: [-6.5, 5.1, 90, 'dining room (west side)'], Digit4: [26, 11, -90, 'garage side'] };
@@ -663,6 +692,7 @@ async function main() {
       $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}${player.ghost ? '  · GHOST' : player.fly ? '  · FLYING' : ''}${navMode ? '  · NAV' : ''}`;
     }
     tape.update(innerWidth, innerHeight, snap);
+    if (build.active) { build.update(); renderBuild(); }
     updateLightPool(overview ? orbit.target : camera.position);
     if (quality.high) {
       renderer.setRenderTarget(sceneRT);

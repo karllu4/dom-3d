@@ -173,3 +173,6 @@ body.menu-open #sim-time { display: none; }
 
 #picks { position: fixed; left: 12px; bottom: 12px; max-width: 46vw; margin: 0; padding: 8px 10px; background: rgba(20,22,26,.82); color: #fff; font: 12px/1.45 ui-monospace, monospace; border-radius: 8px; white-space: pre-wrap; pointer-events: none; z-index: 20; }
 #picks.hidden { display: none; }
+
+#buildhud { position: fixed; right: 12px; top: 70px; max-width: 52vw; margin: 0; padding: 8px 10px; background: rgba(14,60,38,.86); color: #fff; font: 12px/1.45 ui-monospace, monospace; border-radius: 8px; white-space: pre-wrap; pointer-events: none; z-index: 20; }
+#buildhud.hidden { display: none; }
