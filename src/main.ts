@@ -292,6 +292,42 @@ async function main() {
       if (d !== null) toast(`Distance: ${(d * 100).toFixed(1)} cm`);
     }
   });
+  // ---------- navigation mode: click a point (crosshair) to read its coordinates; "P1 x y z · mesh" list stays on screen to quote back
+  const picks: { p: THREE.Vector3; what: string }[] = [];
+  const pickGroup = new THREE.Group();
+  scene.add(pickGroup);
+  const pickRay = new THREE.Raycaster();
+  const shown = (o: THREE.Object3D | null) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+  const renderPicks = () => {
+    const el = $('picks');
+    el.textContent = picks.length ? 'Picked points (plan x, plan y, height z in m) — Z undo · X clear\n' + picks.map((q, i) => `P${i + 1}  x ${q.p.x.toFixed(2)}  y ${q.p.z.toFixed(2)}  z ${q.p.y.toFixed(2)}  · ${q.what}`).join('\n') : '';
+    el.classList.toggle('hidden', !picks.length);
+    while (pickGroup.children.length) pickGroup.remove(pickGroup.children[0]);
+    picks.forEach((q) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff2d55, depthTest: false }));
+      m.position.copy(q.p); m.renderOrder = 999; pickGroup.add(m);
+    });
+  };
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || !navMode || tape.active || !player.controls.isLocked || overview) return;
+    pickRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const hit = pickRay.intersectObjects(scene.children, true).find((h) => (h.object as THREE.Mesh).isMesh && shown(h.object) && h.object.parent !== pickGroup && !(h.object as THREE.Mesh).geometry.type.startsWith('Sphere'));
+    if (!hit) { showToast('No surface at the crosshair'); return; }
+    const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3();
+    const what = `${hit.object.parent?.name || hit.object.type}${hit.object.name ? '/' + hit.object.name : ''} (normal ${n.x.toFixed(1)}, ${n.z.toFixed(1)}, ${n.y.toFixed(1)})`;
+    picks.push({ p: hit.point.clone(), what });
+    if (picks.length > 8) picks.shift();
+    renderPicks();
+    const q = picks[picks.length - 1];
+    const text = `P${picks.length}: x ${q.p.x.toFixed(2)}, y ${q.p.z.toFixed(2)}, z ${q.p.y.toFixed(2)} · ${what}`;
+    navigator.clipboard?.writeText(picks.map((r, i) => `P${i + 1}: x ${r.p.x.toFixed(2)}, y ${r.p.z.toFixed(2)}, z ${r.p.y.toFixed(2)} · ${r.what}`).join('\n')).catch(() => {});
+    showToast(text + '  (all picks copied to the clipboard)', 4000);
+  });
+  addEventListener('keydown', (e) => {
+    if (!navMode || tape.active) return;
+    if (e.code === 'KeyX') { picks.length = 0; renderPicks(); }
+    if (e.code === 'KeyZ') { picks.pop(); renderPicks(); }
+  });
   const toggleRoomLight = () => {
     const { label } = roomAt(house, player.pos.x, player.pos.y, player.feet);
     if (!label) { toast('Not inside a room'); return; }
@@ -377,10 +413,11 @@ async function main() {
   $('ov-attic').onclick = () => { setUpper(!state.upper); syncToggles(); };
   $('ov-base').onclick = stripToBase;
   for (const k of Object.keys(actions)) $(`t-${k}`).onclick = () => { actions[k](); syncToggles(); };
+  let navMode = false;
   addEventListener('keydown', (e) => {
     const map: Record<string, string> = { KeyP: 'plan', KeyR: 'roof', KeyU: 'upper', KeyO: 'overview', KeyI: 'finish', KeyF: 'furniture' };
     const a = map[e.code];
-    if (a) { actions[a](); syncToggles(); }
+    if (navMode && e.code === 'KeyF') { /* flight, handled below */ } else if (a) { actions[a](); syncToggles(); }
     if (e.code === 'KeyM') $('minimap').classList.toggle('hidden');
     if (e.code === 'KeyB' && overview) stripToBase();
     if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') && !e.repeat) stepTime(0.5);
@@ -393,6 +430,20 @@ async function main() {
     }
     if (e.code === 'KeyT' && !e.repeat) toggleTape();
     if (tape.active && e.code === 'KeyN') { snap = !snap; tapeStatus(); }
+    else if (e.code === 'KeyN' && !e.repeat && !overview) {
+      navMode = !navMode;
+      if (navMode) player.setGhost(true); else { player.setFly(false); player.teleport(player.pos.x, player.pos.y, player.feet); }   // nav starts as a flying ghost; leaving lands you
+      showToast(navMode ? 'Navigation (flying ghost): 1 front · 2 back · 3 dining room · 4 garage side · Space up · left Shift down · F flight · G ghost · click = read point · N exit' : 'Navigation off', 5000);
+    }
+    if (navMode && !tape.active && !e.repeat && !overview) {
+      const sides: Record<string, [number, number, number, string]> = {
+        Digit1: [7.5, 22, 0, 'front (entrance + garage)'], Digit2: [7.5, -14, 180, 'back (garden)'],
+        Digit3: [-6.5, 5.1, 90, 'dining room (west side)'], Digit4: [26, 11, -90, 'garage side'] };
+      const sd = sides[e.code.replace('Numpad', 'Digit')];
+      if (sd) { player.teleport(sd[0], sd[1], -0.32, sd[2]); showToast(`View: ${sd[3]}`, 1800); }
+      if (e.code === 'KeyF') { player.setFly(!player.fly); showToast(player.fly ? 'Flight on · Space up · left Shift down' : 'Flight off', 2500); }
+      if (e.code === 'KeyG') { player.setGhost(!player.ghost); showToast(player.ghost ? 'Ghost mode on: walls, floors and roof no longer block you (flight is on)' : 'Ghost mode off', 2800); }
+    }
     if (tape.active && !e.repeat && /^(Digit|Numpad)[0-4]$/.test(e.code)) {
       // from the selected point (first click, else the crosshair): 0 = floor, 1 = nearest wall, 2..4 = second..fourth nearest wall
       const n = e.code.slice(-1);
@@ -403,7 +454,7 @@ async function main() {
     if (tape.active && (e.code === 'KeyZ' || e.code === 'Backspace')) tape.undo();
     if (e.code === 'KeyX' && tape.count) { tape.clear(); toast('Measurements cleared'); }
     if (e.code === 'KeyE' && !overview) nearestDoor()?.toggle();
-    if (e.code === 'KeyG' && hs.garage) {
+    if (e.code === 'KeyG' && hs.garage && !navMode) {
       hs.garage.setVariant(hs.garage.variant + 1);
       showToast(`Garage door: ${hs.garage.label}`, 3500);
     }
@@ -516,7 +567,7 @@ async function main() {
     colourRows.clinkerColour = { sync: () => { inp.value = clinkerPair(look.clinkerColor).a; for (const { b, p } of sws) b.classList.toggle('on', p.a.toLowerCase() === look.clinkerColor.toLowerCase()); } };
   }
   $('ov-facade').onclick = () => setFacade(facadeIdx + 1);
-  addEventListener('keydown', (e) => { if (e.code === 'KeyN' && !e.repeat) setFacade(facadeIdx + (e.shiftKey ? -1 : 1)); });
+  addEventListener('keydown', (e) => { if (e.code === 'KeyV' && !e.repeat) setFacade(facadeIdx + (e.shiftKey ? -1 : 1)); });
   try {
     const saved = JSON.parse(localStorage.getItem('facadeLook') ?? 'null');
     const savedIdx = FACADE_STYLES.findIndex((f) => f.id === saved?.id);   // a design that was removed is simply forgotten
@@ -609,7 +660,7 @@ async function main() {
       hint.textContent = near ? `${isTouch ? 'Door button' : 'E'} — ${near.open ? 'close' : 'open'} door · ${near.label}${near === hs.garage ? '  ·  G — next design' : ''}` : '';
       hint.classList.toggle('hidden', !near);
       minimap.draw(level, player.pos.x, player.pos.y, player.yaw(), label?.id ?? null, site.planDownBearingDeg);
-      $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}`;
+      $('coords').textContent = `x ${player.pos.x.toFixed(2)}  y ${player.pos.y.toFixed(2)}  level ${player.feet >= 0 ? '+' : ''}${player.feet.toFixed(2)} m${player.crouch ? '  · crouching' : ''}${player.ghost ? '  · GHOST' : player.fly ? '  · FLYING' : ''}${navMode ? '  · NAV' : ''}`;
     }
     tape.update(innerWidth, innerHeight, snap);
     updateLightPool(overview ? orbit.target : camera.position);

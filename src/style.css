@@ -163,3 +163,13 @@ body.menu-open #sim-time { display: none; }
 
 .clinker-toggle { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--chip); align-self: flex-start; font-size: 13px; }
 .clinker-toggle.on { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on); }
+
+#colours-box { margin: 10px 0; }
+#colours-box > summary { cursor: pointer; font-weight: 600; font-size: 1.05em; padding: 4px 0; list-style: none; user-select: none; }
+#colours-box > summary::-webkit-details-marker { display: none; }
+#colours-box > summary::before { content: '\25B8'; display: inline-block; width: 1.1em; transition: transform .15s; }
+#colours-box[open] > summary::before { transform: rotate(90deg); }
+#colours-box > #colours { margin-top: 6px; }
+
+#picks { position: fixed; left: 12px; bottom: 12px; max-width: 46vw; margin: 0; padding: 8px 10px; background: rgba(20,22,26,.82); color: #fff; font: 12px/1.45 ui-monospace, monospace; border-radius: 8px; white-space: pre-wrap; pointer-events: none; z-index: 20; }
+#picks.hidden { display: none; }

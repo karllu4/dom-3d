@@ -16,6 +16,9 @@ export class Player {
   private eyeSmooth = 0;
   private keys = new Set<string>();
   crouch = false;
+  /** flight (Minecraft style: Space up, C down, no gravity) and ghost mode (flight that also passes through every obstacle) */
+  fly = false;
+  ghost = false;
   /** on-screen joystick (phones): x right, y down, -1..1; `active` = walking without pointer lock */
   touch = { x: 0, y: 0, active: false };
 
@@ -23,11 +26,14 @@ export class Player {
     this.controls = new PointerLockControls(camera, dom);
     addEventListener('keydown', (e) => {
       this.keys.add(e.code);
-      if (e.code === 'KeyC') this.toggleCrouch();
+      if (e.code === 'KeyC' && !this.fly) this.toggleCrouch();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
   }
+
+  setFly(on: boolean) { this.fly = on; if (!on) this.ghost = false; this.vz = 0; }
+  setGhost(on: boolean) { this.ghost = on; if (on) this.fly = true; }
 
   toggleCrouch() {
     // don't stand up into a sloped ceiling
@@ -43,7 +49,7 @@ export class Player {
     this.camera.quaternion.setFromEuler(e);
   }
 
-  get height() { return this.crouch ? HEIGHT_CROUCH : HEIGHT; }
+  get height() { return this.crouch && !this.fly ? HEIGHT_CROUCH : HEIGHT; }
 
   teleport(x: number, y: number, feet: number, yawDeg?: number) {
     this.pos = { x, y };
@@ -71,6 +77,13 @@ export class Player {
       analog = Math.min(1, Math.hypot(this.touch.x, this.touch.y)); runStick = analog > 0.97;
     }
 
+    const fast = k.has('ShiftLeft') || k.has('ShiftRight');   // run (not in flight, where left Shift flies down)
+    if (this.fly) {
+      let v = 0;
+      if (k.has('Space')) v += 1;
+      if (k.has('ShiftLeft')) v -= 1;                                 // left Shift = down
+      if (v) { this.feet += v * 6 * dt; this.vz = 0; }
+    }
     if ((this.controls.isLocked || this.touch.active) && (f || s)) {
       const dir = new THREE.Vector3();
       this.camera.getWorldDirection(dir);
@@ -79,7 +92,7 @@ export class Player {
       const right = new THREE.Vector3(-dir.z, 0, dir.x);
       const mv = dir.multiplyScalar(f).add(right.multiplyScalar(s));
       if (mv.lengthSq() > 0) mv.normalize();
-      const speed = (k.has('ShiftLeft') || k.has('ShiftRight') || runStick ? RUN : WALK) * (this.crouch ? 0.5 : 1) * analog;
+      const speed = (this.fly ? 9 : fast || runStick ? RUN : WALK) * (this.crouch && !this.fly ? 0.5 : 1) * analog;
       // sub-steps so we never tunnel through 12 cm partitions
       const total = speed * dt;
       const steps = Math.max(1, Math.ceil(total / 0.04));
@@ -88,7 +101,9 @@ export class Player {
 
     // vertical: snap up small steps, fall otherwise
     const ground = this.world.groundAt(this.pos.x, this.pos.y, this.feet);
-    if (ground >= this.feet - 0.001) {
+    if (this.fly) {
+      if (!this.ghost && ground > this.feet) this.feet = ground;     // flying never takes you into the floor, ghosts go anywhere
+    } else if (ground >= this.feet - 0.001) {
       this.feet = ground;
       this.vz = 0;
     } else {
@@ -101,6 +116,7 @@ export class Player {
   }
 
   private step(dx: number, dy: number) {
+    if (this.ghost) { this.pos = { x: this.pos.x + dx, y: this.pos.y + dy }; return; }
     const w = this.world;
     const h = this.height;
     // try full move, then each axis (lets you slide along walls and under sloped ceilings)
@@ -117,7 +133,7 @@ export class Player {
   }
 
   private syncCamera(dt = 1) {
-    const target = this.feet + (this.crouch ? EYE_CROUCH : EYE);
+    const target = this.feet + (this.crouch && !this.fly ? EYE_CROUCH : EYE);
     // smooth only upward steps (stairs); falling follows directly
     this.eyeSmooth = target > this.eyeSmooth ? this.eyeSmooth + (target - this.eyeSmooth) * Math.min(1, dt * 14) : target;
     this.camera.position.set(this.pos.x, this.eyeSmooth, this.pos.y);
