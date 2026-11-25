@@ -412,7 +412,7 @@ def main():
                            if inner.contains(Point((t['p'][0] + t['p'][2]) / 2, (t['p'][1] + t['p'][3]) / 2))]
     print(f"[roof] {len(out['roof']['ties'])} collar ties inside the attic")
     # close roof slots only above the inside of the house (bay side walls); outside the walls they stay open
-    shell = Polygon(fp['outer']).buffer(-0.03, join_style=2)  # strictly inside the outer walls
+    shell = Polygon(fp['outer']).buffer(-0.003, join_style=2)  # strictly inside the outer walls
     kept = []
     for st in out['roof']['steps']:
         x0, y0, x1, y1 = st['p']
@@ -426,6 +426,31 @@ def main():
             kept.append({'p': [round(a0, 3), round(b0, 3), round(a1, 3), round(b1, 3)],
                          'lo': [round(lerp(st['lo'], t0), 3), round(lerp(st['lo'], t1), 3)],
                          'hi': [round(lerp(st['hi'], t0), 3), round(lerp(st['hi'], t1), 3)]})
+    # the fillers stop at the wall faces, not 3 cm short of them (that left a slit at the corner): the filler along y = 10.10 runs
+    # out to the pier filler (x 6.99) and to the garage's east face (x 14.0); the filler along x = 6.99 starts on the pier plane y = 10.10
+    for st in kept:
+        x0, y0, x1, y1 = st['p']
+        if abs(y0 - 10.1) < 0.01 and abs(y1 - 10.1) < 0.01:
+            for xt in (6.99, 14.0):
+                for end in (0, 1):
+                    xc = (x0, x1)[end]
+                    if abs(xc - xt) < 0.06 and abs(xc - xt) > 1e-6:
+                        xo = (x1, x0)[end]
+                        t = (xt - xo) / (xc - xo)
+                        for k in ('lo', 'hi'):
+                            vo = st[k][1 - end]; vc = st[k][end]
+                            st[k][end] = round(vo + (vc - vo) * t, 3)
+                        st['p'][2 * end] = xt
+    for st in kept:
+        x0, y0, x1, y1 = st['p']
+        if abs(x0 - 6.99) < 0.01 and abs(x1 - 6.99) < 0.01 and abs(y0 - 10.1) < 0.02 and y0 != 10.1:
+            t = (10.1 - y1) / (y0 - y1)
+            for k in ('lo', 'hi'): st[k][0] = round(st[k][1] + (st[k][0] - st[k][1]) * t, 3)
+            st['p'][1] = 10.1
+    # the main roof ends at y = 10.10 with its own end face/fascia: keep the filler panels 6 mm behind that plane (no coplanar flicker)
+    for st in kept:
+        for i in (1, 3):
+            if abs(st['p'][i] - 10.1) < 1e-6: st['p'][i] = 10.094
     out['roof']['steps'] = kept
     print(f"[roof] {len(kept)} slot fillers kept inside the walls")
     # flashing only on true roof edges: drop parts of a face edge that touch another face edge which is at the
